@@ -2,22 +2,93 @@
 ## Step-by-Step Build Guide
 
 **Project:** Themis - AI-Powered Demand Letter Generator  
-**Tech Stack:** React + Firebase (Auth, Functions, Firestore) + OpenAI + Tiptap  
+**Tech Stack:** React + Firebase (Auth, Functions, Firestore, Storage) + OpenAI + Tiptap  
 **Estimated Time:** 12-15 hours (1.5-2 days)
+
+## 📋 New User Flow (Updated Architecture)
+
+1. **Login** → User authenticates
+2. **Create Document** → User creates new empty demand letter
+3. **Upload/Attach Documents** (in Chat Sidebar):
+   - Click "Select Documents" button
+   - Upload new PDFs (drag & drop or button) → Saved to Firebase Storage
+   - OR select existing documents from library (multi-select checkboxes)
+   - Documents are attached to current letter
+4. **Generate Letter** → User types in chat: "Can you create a demand letter?"
+   - AI downloads PDFs from Storage
+   - Sends to OpenAI Vision API
+   - Generates letter
+   - Inserts into editor
+5. **Edit & Refine** → User can edit directly or ask AI for refinements
+6. **Export** → Export to Word document
 
 ## ⚠️ Important Architecture Notes
 
-**Firebase Storage is NOT used:**
-- We do NOT save PDF/Word files to Storage
-- We do NOT save exported Word documents to Storage
-- We extract text from uploaded files and save ONLY the extracted text to Firestore
-- We save letter content to Firestore
-- Export downloads directly to user's computer (no Storage)
+**Firebase Storage IS used for PDF files:**
+- We save original PDF files to Firebase Storage
+- We save document metadata to Firestore (name, storage path, userId, etc.)
+- We do NOT store extracted text in Firestore
+- AI reads PDFs directly from Storage using OpenAI Vision API
+- Demand letters (content) are saved to Firestore
+- Export downloads directly to user's computer (no Storage for exports)
 
 **Data Flow:**
-1. Upload PDF → Extract text → Save extracted text to Firestore
-2. Generate Letter → Read extracted text from Firestore → AI generates → Save letter to Firestore
+1. Upload PDF → Save to Firebase Storage → Save metadata to Firestore
+2. Generate Letter → Download PDFs from Storage → Send to OpenAI Vision → AI generates → Save letter to Firestore
 3. Export → Read letter from Firestore → Create Word → Download directly (no Storage)
+
+## 📊 Data Models
+
+### Firestore Collections
+
+#### `documents` Collection (Demand Letters)
+```typescript
+{
+  id: string;
+  title: string;
+  content: string | null;  // HTML from Tiptap
+  format: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  userId: string;
+  sourceDocumentIds: string[];  // References to sourceDocuments
+  status: "draft" | "completed";
+  margins?: { top, bottom, left, right };
+}
+```
+
+#### `sourceDocuments` Collection (Uploaded PDFs Metadata)
+```typescript
+{
+  id: string;
+  name: string;
+  storagePath: string;  // Path in Firebase Storage: "documents/{userId}/{docId}.pdf"
+  userId: string;
+  uploadedAt: Timestamp;
+  fileSize: number;
+  mimeType: string;  // "application/pdf"
+  // Note: NO extractedText field - AI reads PDFs directly from Storage
+}
+```
+
+### Firebase Storage Structure
+```
+documents/
+  {userId}/
+    {documentId}.pdf
+```
+
+### Firebase Functions Updates
+
+#### `generateLetter` Function
+- **Input:** `{ sourceDocumentIds: string[] }`
+- **Process:**
+  1. Get storage paths from Firestore (sourceDocuments)
+  2. Download PDFs from Firebase Storage
+  3. Send PDFs to OpenAI Vision API
+  4. AI reads and generates letter
+  5. Save letter to Firestore
+- **Output:** `{ letter: string }`
 
 ---
 
@@ -27,14 +98,15 @@
 - [x] Create Firebase project at console.firebase.google.com
 - [x] Enable Authentication (Email/Password)
 - [x] Create Firestore database
-- [x] Set up Firebase Storage
+- [x] Set up Firebase Storage (for PDF files)
 - [x] Install Firebase CLI: `npm install -g firebase-tools`
 - [x] Login to Firebase: `firebase login`
 - [x] Initialize project: `firebase init`
   - [x] Select: Functions, Firestore, Storage
   - [x] Choose TypeScript for Functions
 - [x] Set up Firestore security rules
-- [x] Set up Storage security rules
+- [x] Set up Storage security rules (for PDF uploads)
+- [ ] Update Storage rules to allow authenticated uploads
 
 **Files Created:**
 - [x] `firebase.json`
@@ -90,15 +162,15 @@
 
 ### Task 2.1: Generate Letter Function
 - [x] Create `generateLetter` function
-- [ ] Read extracted text from Firestore (NOT Storage)
-- [x] Extract text from documents (for upload process)
-- [x] Call OpenAI API with document content
+- [ ] Download PDFs from Firebase Storage (using sourceDocumentIds)
+- [ ] Send PDFs to OpenAI Vision API (not text extraction)
+- [ ] Call OpenAI API with PDF content
 - [ ] Save generated letter to Firestore
 - [x] Return generated letter
 - [x] Add error handling
 - [ ] Test function
 
-**Note:** Function should read extracted text from Firestore, not download files from Storage
+**Note:** Function downloads PDFs from Storage and sends directly to OpenAI Vision API. No text extraction or storage.
 
 **Code Location:** `functions/src/index.ts`
 
@@ -150,7 +222,8 @@
 ### Task 3.1: Firebase Service Setup
 - [x] Create `src/services/firebase.ts`
 - [x] Initialize Firebase app
-- [x] Export auth, firestore, functions (NO storage)
+- [x] Export auth, firestore, functions
+- [ ] Export storage (for PDF uploads)
 - [x] Test connection
 
 **Files Created:**
@@ -235,21 +308,19 @@
 
 ## Phase 5: Document Upload (1.5 hours)
 
-### Task 5.1: Upload Component
-- [x] Create `src/components/DocumentUpload.tsx`
-- [x] Add file input (accept PDF, Word, text)
-- [x] Add drag & drop support
-- [x] Extract text from uploaded files (client-side: pdfjs-dist, mammoth)
-- [x] Save extracted text to Firestore (NOT Storage)
-- [x] Show upload progress
-- [x] Create document entry in Firestore with extracted text
-- [x] Redirect to Editor with new document ID
+### Task 5.1: Upload Component (MOVED TO CHAT)
+- [ ] Upload functionality moved to Chat Sidebar
+- [ ] Add file upload in chat (drag & drop or button)
+- [ ] Upload PDF to Firebase Storage
+- [ ] Save metadata to Firestore (name, storagePath, userId, uploadedAt)
+- [ ] Auto-attach uploaded document to current letter
+- [ ] Show upload progress
+- [ ] Display attached documents in chat sidebar
 
-**Note:** We extract text and save to Firestore. We do NOT save PDF/Word files to Storage.
+**Note:** PDFs are saved to Firebase Storage. Metadata (not extracted text) saved to Firestore.
 
-**Files Created:**
-- [x] `src/components/DocumentUpload.tsx`
-- [x] `src/components/DocumentUpload.css`
+**Files to Modify:**
+- [ ] `src/components/ChatSidebar.tsx` (add upload functionality)
 
 ---
 
@@ -431,59 +502,100 @@
 
 ---
 
-## Phase 8: Chat Sidebar (2 hours)
+## Phase 8: Chat Sidebar with Document Management (3 hours)
 
-### Task 8.1: Chat Component
-- [ ] Create `src/components/ChatSidebar.tsx`
-- [ ] Set up chat UI:
+### Task 8.1: Chat Component Base
+- [x] Create `src/components/ChatSidebar.tsx`
+- [x] Set up chat UI:
   - Messages list (scrollable)
   - Input field at bottom
   - Send button
-- [ ] Style chat sidebar
+- [x] Style chat sidebar
 
 **Files Created:**
+- `src/components/ChatSidebar.tsx`
+- `src/components/ChatSidebar.css`
+
+---
+
+### Task 8.2: Document Upload in Chat
+- [ ] Add "Select Documents" button at top of chat sidebar
+- [ ] Add file upload area (drag & drop or button)
+- [ ] Upload PDF to Firebase Storage
+- [ ] Save document metadata to Firestore:
+  - name, storagePath, userId, uploadedAt, fileSize, mimeType
+- [ ] Auto-attach uploaded document to current letter
+- [ ] Show upload progress
+- [ ] Handle upload errors
+
+**Files Modified:**
+- `src/components/ChatSidebar.tsx`
+- `src/services/firebase.ts` (add Storage import)
+
+---
+
+### Task 8.3: Document Selection UI
+- [ ] Create expandable document selection section
+- [ ] Query Firestore for user's documents (sourceDocuments collection)
+- [ ] Display list with checkboxes (multi-select)
+- [ ] Add expand/collapse animation
+- [ ] Allow selecting multiple documents
+- [ ] Attach selected documents to current letter
+- [ ] Show selected count
+
+**Files Modified:**
 - `src/components/ChatSidebar.tsx`
 
 ---
 
-### Task 8.2: Chat Messages
-- [ ] Create message component
-- [ ] Display user messages
-- [ ] Display AI messages
-- [ ] Show document references (@ mentions)
-- [ ] Add timestamps
-- [ ] Style messages
+### Task 8.4: Attached Documents Display
+- [ ] Show attached documents section in chat sidebar
+- [ ] Display list of currently attached documents
+- [ ] Show document names and count
+- [ ] Add visual indicator (badge/chip)
+- [ ] Allow removing/detaching documents (future: delete option)
+
+**Files Modified:**
+- `src/components/ChatSidebar.tsx`
+
+---
+
+### Task 8.5: Chat Messages
+- [x] Create message component
+- [x] Display user messages
+- [x] Display AI messages
+- [x] Add timestamps
+- [x] Style messages
 
 **Files Created:**
 - `src/components/ChatMessage.tsx`
+- `src/components/ChatMessage.css`
 
 ---
 
-### Task 8.3: Chat Input with @ Mentions
-- [ ] Create chat input component
-- [ ] Detect `@` character
-- [ ] Show document dropdown on `@`
-- [ ] Allow document selection
-- [ ] Send message to Firebase Function
-- [ ] Display AI response
-- [ ] Handle document references
+### Task 8.6: Generate Letter Command
+- [ ] Detect "create demand letter" or "generate letter" in chat
+- [ ] Get all attached document IDs
+- [ ] Call `generateLetter` function with sourceDocumentIds
+- [ ] Function downloads PDFs from Storage → OpenAI Vision → generates letter
+- [ ] Insert generated letter into editor
+- [ ] Show success message in chat
 
 **Files Modified:**
 - `src/components/ChatSidebar.tsx`
+- `functions/src/index.ts` (update generateLetter function)
 
 ---
 
-### Task 8.4: Chat Integration
-- [ ] Connect chat to `chatWithAI` function
-- [ ] Update editor when AI makes changes
-- [ ] Show changes in editor
-- [ ] Allow accept/reject
-- [ ] Test full chat flow
+### Task 8.7: Chat Integration
+- [x] Connect chat to `chatWithAI` function
+- [ ] Update chat to pass attached document IDs
+- [ ] Update `chatWithAI` function to use attached documents
+- [ ] Test full chat flow with document generation
 
 **Files Modified:**
 - `src/pages/Editor.tsx`
-- `frontend/src/components/ChatSidebar.js`
-- `frontend/src/components/TiptapEditor.js`
+- `functions/src/index.ts`
 
 ---
 

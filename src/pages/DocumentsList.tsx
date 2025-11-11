@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../services/firebase';
 import DocumentCard from '../components/DocumentCard';
@@ -74,6 +74,33 @@ export default function DocumentsList() {
     setShowUpload(true);
   };
 
+  const handleCreateNew = async () => {
+    if (!auth.currentUser) {
+      navigate('/login');
+      return;
+    }
+
+    try {
+      // Create empty document
+      const docRef = await addDoc(collection(db, 'documents'), {
+        title: 'Untitled Document',
+        content: null,
+        format: 'Standard',
+        status: 'draft',
+        userId: auth.currentUser.uid,
+        sourceDocumentIds: [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Navigate to editor with new document
+      navigate(`/editor/${docRef.id}`);
+    } catch (error) {
+      console.error('Error creating document:', error);
+      alert('Failed to create document. Please try again.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="documents-list-container">
@@ -95,8 +122,11 @@ export default function DocumentsList() {
       <header className="documents-header">
         <h1 className="documents-title">My Documents</h1>
         <div className="header-actions">
+          <button onClick={handleCreateNew} className="create-button">
+            + Create New
+          </button>
           <button onClick={handleUploadNew} className="upload-button">
-            + Upload New
+            + Upload PDF
           </button>
           <button onClick={handleLogout} className="logout-button">
             Logout
@@ -108,10 +138,15 @@ export default function DocumentsList() {
         <div className="empty-state">
           <div className="empty-state-icon">📄</div>
           <h2>No documents yet</h2>
-          <p>Get started by uploading your first document</p>
-          <button onClick={handleUploadNew} className="upload-button">
-            + Upload New Document
-          </button>
+          <p>Get started by creating a new document or uploading a PDF</p>
+          <div className="empty-state-actions">
+            <button onClick={handleCreateNew} className="create-button">
+              + Create New Document
+            </button>
+            <button onClick={handleUploadNew} className="upload-button">
+              + Upload PDF
+            </button>
+          </div>
         </div>
       ) : (
         <div className="documents-grid">

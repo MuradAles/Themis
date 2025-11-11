@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { Editor as TiptapEditorType } from '@tiptap/react';
 import { saveAs } from 'file-saver';
 import { auth, db, functions } from '../services/firebase';
 import TiptapEditor from '../components/TiptapEditor';
+import ChatSidebar from '../components/ChatSidebar';
 import './Editor.css';
 
 interface Document {
@@ -14,6 +15,7 @@ interface Document {
   content: string | null;
   format: string;
   status: 'draft' | 'completed';
+  sourceDocumentIds?: string[];
   margins?: {
     top: number;
     bottom: number;
@@ -256,7 +258,7 @@ export default function Editor() {
       
       // Convert HTML to plain text for Word export
       // Create a temporary div to extract text content
-      const tempDiv = document.createElement('div');
+      const tempDiv = window.document.createElement('div');
       tempDiv.innerHTML = htmlContent;
       const letterContent = tempDiv.textContent || tempDiv.innerText || '';
       
@@ -293,6 +295,72 @@ export default function Editor() {
       setExporting(false);
       alert('Failed to export document. Please try again.');
     }
+  };
+
+  const handleDocumentsUpdate = async (documentIds: string[]) => {
+    if (!document || !auth.currentUser) return;
+
+    try {
+      const docRef = doc(db, 'documents', document.id);
+      
+      if (document.id === 'new') {
+        // If it's a new document, we need to create it first
+        const newDoc = {
+          title: document.title || 'Untitled Document',
+          content: document.content || '',
+          format: document.format || 'Standard',
+          status: 'draft' as const,
+          userId: auth.currentUser.uid,
+          sourceDocumentIds: documentIds,
+          margins: document.margins || margins,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+        await setDoc(docRef, newDoc);
+        setDocument({ ...document, id: docRef.id, sourceDocumentIds: documentIds });
+      } else {
+        // Update existing document
+        await updateDoc(docRef, {
+          sourceDocumentIds: documentIds,
+          updatedAt: serverTimestamp(),
+        });
+        setDocument({ ...document, sourceDocumentIds: documentIds });
+      }
+    } catch (error) {
+      console.error('Error updating documents:', error);
+    }
+  };
+
+  const handleLetterUpdate = async (updatedLetter: string) => {
+    if (!editor || !document) return;
+
+    // Clean the content - remove leading/trailing whitespace and newlines
+    let cleanedContent = updatedLetter.trim();
+    
+    // If content is already HTML, use it directly
+    if (cleanedContent.includes('<p>') || cleanedContent.includes('<div>')) {
+      // Remove leading/trailing empty paragraphs
+      cleanedContent = cleanedContent.replace(/^<p>\s*<\/p>\s*/i, '');
+      cleanedContent = cleanedContent.replace(/\s*<p>\s*<\/p>$/i, '');
+      editor.commands.setContent(cleanedContent || '<p></p>');
+    } else {
+      // Convert plain text to HTML paragraphs
+      // Split by double newlines, filter out empty paragraphs
+      const paragraphs = cleanedContent
+        .split('\n\n')
+        .map((para) => para.trim())
+        .filter((para) => para.length > 0)
+        .map((para) => `<p>${para.replace(/\n/g, '<br>')}</p>`);
+      
+      const htmlContent = paragraphs.join('');
+      editor.commands.setContent(htmlContent || '<p></p>');
+    }
+    
+    // Auto-save the updated content
+    const newContent = editor.getHTML();
+    await saveToFirestore(newContent);
+    
+    // Document updated - no alert needed, chat will confirm
   };
 
   const toggleChat = () => {
@@ -622,10 +690,13 @@ export default function Editor() {
         {/* Chat Sidebar (conditional) */}
         {showChat && (
           <div className="chat-sidebar">
-            <div className="chat-content-placeholder">
-              <p>Chat sidebar will be implemented in Phase 8</p>
-              <p>AI chat interface will appear here</p>
-            </div>
+            <ChatSidebar
+              currentLetter={currentContent}
+              sourceDocumentIds={document?.sourceDocumentIds || []}
+              onLetterUpdate={handleLetterUpdate}
+              onDocumentsUpdate={handleDocumentsUpdate}
+              documentId={document?.id}
+            />
           </div>
         )}
       </div>

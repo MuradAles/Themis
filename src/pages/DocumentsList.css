@@ -25,6 +25,27 @@
   gap: 12px;
 }
 
+.create-button {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+.create-button:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.create-button:active {
+  transform: translateY(0);
+}
+
 .upload-button {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -104,6 +125,13 @@
   font-size: 1rem;
 }
 
+.empty-state-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
 .documents-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -127,6 +155,7 @@
     flex-direction: column;
   }
 
+  .create-button,
   .upload-button,
   .logout-button {
     width: 100%;

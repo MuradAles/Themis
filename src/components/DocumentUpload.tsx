@@ -1,14 +1,9 @@
 import { useState, useRef, DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../services/firebase';
-import * as pdfjsLib from 'pdfjs-dist';
-import * as mammoth from 'mammoth';
+import { ref, uploadBytes } from 'firebase/storage';
+import { db, auth, storage } from '../services/firebase';
 import './DocumentUpload.css';
-
-// Configure PDF.js worker - use jsdelivr CDN with correct path
-// For pdfjs-dist v5, use the .mjs worker file
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.worker.min.mjs`;
 
 interface DocumentUploadProps {
   onClose?: () => void;
@@ -25,17 +20,14 @@ export default function DocumentUpload({ onClose }: DocumentUploadProps) {
   const handleFileSelect = (selectedFiles: FileList | null) => {
     if (!selectedFiles) return;
 
+    // Only accept PDF files
     const validFiles = Array.from(selectedFiles).filter((file) => {
-      const validTypes = [
-        'application/pdf',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/msword',
-        'text/plain',
-      ];
-      return validTypes.includes(file.type) || file.name.endsWith('.pdf') || 
-             file.name.endsWith('.docx') || file.name.endsWith('.doc') || 
-             file.name.endsWith('.txt');
+      return file.type === 'application/pdf' || file.name.endsWith('.pdf');
     });
+
+    if (validFiles.length < selectedFiles.length) {
+      setError('Only PDF files are supported');
+    }
 
     setFiles((prev) => [...prev, ...validFiles]);
     setError('');
@@ -56,61 +48,6 @@ export default function DocumentUpload({ onClose }: DocumentUploadProps) {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const extractTextFromPDF = async (file: File): Promise<string> => {
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let text = '';
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(' ');
-        text += pageText + '\n\n';
-      }
-
-      return text.trim();
-    } catch (err) {
-      throw new Error(`Failed to extract text from PDF: ${err}`);
-    }
-  };
-
-  const extractTextFromWord = async (file: File): Promise<string> => {
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      return result.value;
-    } catch (err) {
-      throw new Error(`Failed to extract text from Word document: ${err}`);
-    }
-  };
-
-  const extractTextFromText = async (file: File): Promise<string> => {
-    try {
-      return await file.text();
-    } catch (err) {
-      throw new Error(`Failed to read text file: ${err}`);
-    }
-  };
-
-  const extractText = async (file: File): Promise<string> => {
-    if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-      return await extractTextFromPDF(file);
-    } else if (
-      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      file.type === 'application/msword' ||
-      file.name.endsWith('.docx') ||
-      file.name.endsWith('.doc')
-    ) {
-      return await extractTextFromWord(file);
-    } else if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-      return await extractTextFromText(file);
-    } else {
-      throw new Error('Unsupported file type');
-    }
-  };
 
   const handleUpload = async () => {
     if (files.length === 0) {
@@ -131,61 +68,45 @@ export default function DocumentUpload({ onClose }: DocumentUploadProps) {
       const userId = auth.currentUser.uid;
       const sourceDocumentIds: string[] = [];
 
-      // Extract text from each file and save to sourceDocuments
+      // Upload each PDF to Storage and save metadata to Firestore
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         setProgress(((i + 0.5) / files.length) * 100);
 
         try {
-          const extractedText = await extractText(file);
-
-          // Save to sourceDocuments collection
+          // Generate unique document ID
+          const docId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+          const storagePath = `documents/${userId}/${docId}.pdf`;
+          
+          // Upload to Storage
+          const storageRef = ref(storage, storagePath);
+          await uploadBytes(storageRef, file);
+          
+          // Save metadata to Firestore (NO extracted text)
           const sourceDocRef = await addDoc(collection(db, 'sourceDocuments'), {
             name: file.name,
-            extractedText: extractedText,
-            uploadedAt: serverTimestamp(),
+            storagePath: storagePath,
             userId: userId,
-            documentId: '', // Will be set after document creation
+            uploadedAt: serverTimestamp(),
+            fileSize: file.size,
+            mimeType: file.type,
           });
 
           sourceDocumentIds.push(sourceDocRef.id);
         } catch (err: any) {
-          throw new Error(`Failed to process ${file.name}: ${err.message}`);
+          throw new Error(`Failed to upload ${file.name}: ${err.message}`);
         }
-      }
-
-      setProgress(90);
-
-      // Create document entry in Firestore
-      const documentRef = await addDoc(collection(db, 'documents'), {
-        title: files.length === 1 
-          ? files[0].name.replace(/\.[^/.]+$/, '') // Remove extension
-          : `Document ${new Date().toLocaleDateString()}`,
-        content: null, // Will be generated later
-        format: 'Standard',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        userId: userId,
-        sourceDocumentIds: sourceDocumentIds,
-        status: 'draft',
-      });
-
-      // Update sourceDocuments with documentId
-      const { updateDoc, doc } = await import('firebase/firestore');
-      for (const sourceId of sourceDocumentIds) {
-        const sourceDocRef = doc(db, 'sourceDocuments', sourceId);
-        await updateDoc(sourceDocRef, { documentId: documentRef.id });
       }
 
       setProgress(100);
 
-      // Close modal if provided, otherwise navigate
+      // Close modal if provided
       if (onClose) {
         onClose();
       }
       
-      // Navigate to editor
-      navigate(`/editor/${documentRef.id}`);
+      // Refresh the page to show new documents
+      window.location.reload();
     } catch (err: any) {
       console.error('Upload error:', err);
       setError(err.message || 'Failed to upload documents. Please try again.');
@@ -216,7 +137,7 @@ export default function DocumentUpload({ onClose }: DocumentUploadProps) {
               Drag and drop files here, or click to select
             </p>
             <p className="dropzone-hint">
-              Supports PDF, Word (.docx, .doc), and Text (.txt) files
+              PDF files only
             </p>
             <button
               className="select-files-button"
@@ -229,7 +150,7 @@ export default function DocumentUpload({ onClose }: DocumentUploadProps) {
               ref={fileInputRef}
               type="file"
               multiple
-              accept=".pdf,.doc,.docx,.txt"
+              accept=".pdf"
               onChange={(e) => handleFileSelect(e.target.files)}
               style={{ display: 'none' }}
             />
@@ -270,7 +191,9 @@ export default function DocumentUpload({ onClose }: DocumentUploadProps) {
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <p className="progress-text">Uploading... {Math.round(progress)}%</p>
+            <p className="progress-text">
+              Uploading PDFs... {Math.round(progress)}%
+            </p>
           </div>
         )}
 
@@ -289,7 +212,7 @@ export default function DocumentUpload({ onClose }: DocumentUploadProps) {
             onClick={handleUpload}
             disabled={uploading || files.length === 0}
           >
-            {uploading ? 'Uploading...' : 'Upload & Extract Text'}
+            {uploading ? 'Uploading...' : 'Upload PDFs'}
           </button>
         </div>
       </div>
