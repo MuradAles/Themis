@@ -1,6 +1,8 @@
 # Steno Demand Letter Generator - Implementation Plan
 
-**Tech Stack:** React + Firebase (Auth, Functions, Firestore, Storage) + OpenAI
+**Tech Stack:** React + Firebase (Auth, Functions, Firestore) + OpenAI
+
+**Note:** Firebase Storage is NOT used. We only use Firestore to store extracted text and letter content.
 
 **Libraries:**
 - `react-router-dom` - Routing/navigation
@@ -78,15 +80,15 @@ steno-demand-letters/
 1. Initialize Firebase project
 2. Set up Firebase Functions
 3. Configure Firestore database
-4. Set up Firebase Storage
-5. Add OpenAI API key to Firebase config
+4. Add OpenAI API key to Firebase config
 
 **How it will work:**
 - Firebase project created in console
 - Functions folder ready for code
 - Firestore rules configured
-- Storage rules configured
 - OpenAI key stored securely in Firebase config
+
+**Note:** Firebase Storage is NOT used. All data (extracted text, letters) is stored in Firestore only.
 
 **Files created:**
 - `firebase.json`
@@ -99,27 +101,31 @@ steno-demand-letters/
 
 **What we'll build:**
 - Cloud Function that calls OpenAI API
-- Takes documents as input
+- Takes extracted text from Firestore
 - Returns generated demand letter
+- Saves letter to Firestore
 
 **How it will look:**
 ```javascript
 // Function signature
-generateLetter({ documents: ['doc1.pdf', 'doc2.pdf'] })
+generateLetter({ documentIds: ['doc1', 'doc2'] })
   → Returns: { letter: "Generated letter text..." }
+  → Also saves letter to Firestore
 ```
 
 **What we'll create:**
 - `functions/index.js` with `generateLetter` function
 - Error handling
 - OpenAI integration
+- Firestore read/write
 
 **Before we code, here's the flow:**
-1. Frontend calls function with document IDs
-2. Function reads documents from Storage
-3. Function calls OpenAI with document content
-4. Function returns generated letter
-5. Frontend receives and displays letter
+1. Frontend calls function with document IDs (from Firestore)
+2. Function reads extracted text from Firestore (NOT Storage)
+3. Function calls OpenAI with extracted text
+4. Function saves generated letter to Firestore
+5. Function returns generated letter
+6. Frontend receives and displays letter
 
 ---
 
@@ -260,7 +266,8 @@ npm install react-router-dom firebase date-fns file-saver
 
 **What we'll build:**
 - File upload interface
-- Upload to Firebase Storage
+- Extract text from uploaded files
+- Save extracted text to Firestore
 - Show uploaded documents list
 
 **How it will look visually:**
@@ -272,9 +279,9 @@ npm install react-router-dom firebase date-fns file-saver
 │  [Choose Files] or Drag & Drop      │
 │                                     │
 │  Uploaded Documents:                │
-│  ✓ contract.pdf                    │
-│  ✓ evidence.docx                   │
-│  ✓ correspondence.txt              │
+│  ✓ contract.pdf (text extracted)   │
+│  ✓ evidence.docx (text extracted)  │
+│  ✓ correspondence.txt (extracted)  │
 │                                     │
 │  [Upload More]                     │
 └─────────────────────────────────────┘
@@ -283,17 +290,21 @@ npm install react-router-dom firebase date-fns file-saver
 **What we'll create:**
 - `DocumentUpload.js` component
 - File input with drag & drop
+- Text extraction (client-side or via function)
 - Upload progress indicator
-- List of uploaded files with delete option
+- List of uploaded documents with extracted text
 
 **Before we code, here's the flow:**
 1. User clicks "Upload New" button
 2. Modal or new page opens
 3. User selects files (PDF, Word, text)
-4. Files upload to Firebase Storage
-5. Create new document entry in Firestore
-6. Redirect to Editor with new document ID
-7. OR: Show in DocumentsList after upload
+4. Extract text from files (client-side or call function)
+5. Save extracted text to Firestore (NOT Storage)
+6. Create new document entry in Firestore with extracted text
+7. Redirect to Editor with new document ID
+8. OR: Show in DocumentsList after upload
+
+**Important:** We do NOT save PDF/Word files to Storage. Only extracted text goes to Firestore.
 
 ---
 
@@ -497,12 +508,15 @@ saveAs(fileUrl, `demand-letter-${date}.docx`);
 
 **Before we code, here's the flow:**
 1. User clicks "Export to Word" button
-2. Frontend calls Firebase Function with letter text
-3. Function creates formatted .docx using `docx` library
-4. Function uploads to Firebase Storage
-5. Function returns download URL
-6. Frontend triggers download using `file-saver` library
-7. File downloads with proper name: `demand-letter-2024-01-15.docx`
+2. Frontend calls Firebase Function with letter text (or documentId to read from Firestore)
+3. Function reads letter from Firestore (if documentId provided)
+4. Function creates formatted .docx using `docx` library
+5. Function returns file buffer directly (NO Storage upload)
+6. Frontend receives file buffer
+7. Frontend triggers download using `file-saver` library
+8. File downloads with proper name: `demand-letter-2024-01-15.docx`
+
+**Important:** We do NOT save exported Word files to Storage. Direct download only.
 
 ---
 
@@ -575,63 +589,47 @@ saveAs(fileUrl, `demand-letter-${date}.docx`);
 **What it does:** Sends letter + instruction to OpenAI, returns refined version
 
 ### 3. `exportToWord`
-**Input:** `{ letter: "..." }`  
-**Output:** `{ fileUrl: "https://..." }`  
-**What it does:** Creates .docx file, uploads to Storage, returns URL
+**Input:** `{ letter: "..." }` or `{ documentId: "..." }`  
+**Output:** `{ fileBuffer: Buffer, fileName: "..." }`  
+**What it does:** Reads letter from Firestore, creates .docx file, returns file buffer for direct download (NO Storage)
 
 ---
 
 ## Firestore Collections
 
-### `documents`
-```javascript
-{
-  id: "doc123",
-  name: "contract.pdf",
-  url: "https://storage.../contract.pdf",
-  uploadedAt: timestamp,
-  userId: "user123"
-}
-```
+**Note:** These old collection structures are replaced by the updated structure below.
 
-### `letters`
-```javascript
-{
-  id: "letter123",
-  content: "Letter text...",
-  documentIds: ["doc1", "doc2"],
-  createdAt: timestamp,
-  updatedAt: timestamp,
-  userId: "user123"
-}
-```
-
-### `documents` (Updated - stores all user documents)
+### `documents` (Stores all user documents)
 ```javascript
 {
   id: "doc123",
   title: "Contract Breach Demand Letter",
-  content: "Letter text...", // or null if not generated yet
+  content: "Letter text...", // Generated letter content
   format: "Standard", // or "Personal Injury", "Business", etc.
   createdAt: timestamp,
   updatedAt: timestamp,
   userId: "user123",
-  sourceDocumentIds: ["doc1", "doc2"], // if generated from uploads
+  sourceDocumentIds: ["doc1", "doc2"], // References to source documents
   status: "draft" | "completed"
 }
 ```
 
-### `sourceDocuments` (Uploaded files)
+### `sourceDocuments` (Extracted text from uploaded files)
 ```javascript
 {
   id: "sourcedoc123",
   name: "contract.pdf",
-  url: "https://storage.../contract.pdf",
+  extractedText: "Full text extracted from PDF...", // Extracted text, NOT file URL
   uploadedAt: timestamp,
   documentId: "doc123", // links to parent document
   userId: "user123"
 }
 ```
+
+**Important:** 
+- We store extracted text in Firestore, NOT file URLs
+- We do NOT use Firebase Storage for uploaded files
+- All data is in Firestore only
 
 ---
 

@@ -16,18 +16,20 @@
 
 ### Backend (Firebase)
 - **Firebase Authentication** - User management
-- **Cloud Firestore** - NoSQL database
-- **Firebase Storage** - File storage
+- **Cloud Firestore** - NoSQL database (stores extracted text and letters)
 - **Cloud Functions** - Serverless backend
-  - **Node.js** runtime
+  - **Node.js 22** runtime
   - **OpenAI SDK** - AI integration
   - **docx** - Word document generation
   - **firebase-admin** - Admin SDK
+- **Note:** Firebase Storage is NOT used. All data stored in Firestore only.
 
 ### AI Services
-- **OpenAI API** - Text generation and refinement
-  - GPT models for document analysis
-  - Chat completion for interactive refinement
+- **OpenAI API** - Text generation, refinement, and document analysis
+  - **GPT-4:** Text generation for letters and chat interactions
+  - **GPT-4 Vision:** Document analysis for scanned PDFs, images, and complex layouts
+  - **Chat Completion:** Interactive refinement and Q&A
+  - **Vision API:** Extracts structured information from document images
 
 ### Development Tools
 - **ESLint 9.39.1** - Code linting
@@ -93,11 +95,11 @@ npm install firebase-functions firebase-admin openai docx
 ## Firebase Setup Requirements
 
 ### Firebase Project Configuration
-1. Create Firebase project in console
+1. Create Firebase project in console (themis-law)
 2. Enable Authentication (Email/Password)
 3. Create Firestore database
-4. Set up Firebase Storage
-5. Initialize Functions
+4. Initialize Functions
+5. Configure OpenAI secret in Functions
 
 ### Security Rules
 
@@ -118,24 +120,14 @@ service cloud.firestore {
 }
 ```
 
-#### Storage Rules
-```javascript
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /documents/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid == userId;
-    }
-  }
-}
-```
+**Note:** Firebase Storage is NOT used in this project. Storage rules exist but are not needed.
 
 ### Environment Variables
-- OpenAI API key stored in Firebase Functions config:
+- OpenAI API key stored in Firebase Functions secrets:
   ```bash
-  firebase functions:config:set openai.key="your-key-here"
+  firebase functions:secrets:set OPENAI_API_KEY
   ```
+- For local development: `.env` file in `functions/` directory with `OPENAI_API_KEY`
 
 ## Development Workflow
 
@@ -164,9 +156,6 @@ firebase deploy --only functions
 
 # Deploy Firestore rules
 firebase deploy --only firestore:rules
-
-# Deploy Storage rules
-firebase deploy --only storage
 
 # Deploy frontend (if using Firebase Hosting)
 firebase deploy --only hosting
@@ -202,13 +191,22 @@ firebase deploy --only hosting
 ### Production Dependencies
 - `react` ^19.2.0
 - `react-dom` ^19.2.0
-- `react-router-dom` (to be installed)
-- `firebase` (to be installed)
-- `@tiptap/react` (to be installed)
-- `@tiptap/starter-kit` (to be installed)
-- `@tiptap/extension-collaboration` (to be installed)
-- `file-saver` (to be installed)
-- `date-fns` (to be installed)
+- `react-router-dom` ^7.9.5 (installed)
+- `firebase` ^12.5.0 (installed)
+- `@tiptap/react` ^3.10.5 (installed)
+- `@tiptap/starter-kit` ^3.10.5 (installed)
+- `@tiptap/extension-collaboration` ^3.10.5 (installed)
+- `file-saver` ^2.0.5 (installed)
+- `date-fns` ^4.1.0 (installed)
+
+### Functions Dependencies
+- `firebase-admin` ^12.6.0
+- `firebase-functions` ^6.0.1
+- `openai` ^6.8.1
+- `docx` ^9.5.1
+- `dotenv` ^17.2.3
+- `pdfjs-dist` (for PDF processing, if needed in functions)
+- `canvas` or `sharp` (for image processing, if needed)
 
 ### Development Dependencies
 - `typescript` ~5.9.3
@@ -222,17 +220,19 @@ firebase deploy --only hosting
 ## API Integrations
 
 ### OpenAI API
-- **Endpoint:** `https://api.openai.com/v1/chat/completions`
+- **Text Generation Endpoint:** `https://api.openai.com/v1/chat/completions`
+- **Vision Endpoint:** `https://api.openai.com/v1/chat/completions` (with image inputs)
 - **Authentication:** Bearer token (stored in Firebase config)
-- **Models:** GPT-4 or GPT-3.5-turbo
+- **Models:** 
+  - GPT-4 for text generation
+  - GPT-4 Vision (gpt-4-vision-preview) for document analysis
 - **Rate Limits:** Per API key (check OpenAI dashboard)
-- **Cost:** Pay-per-use (tokens)
+- **Cost:** Pay-per-use (tokens + image processing)
 
 ### Firebase APIs
 - **Authentication:** REST API and SDK
 - **Firestore:** Real-time database SDK
-- **Storage:** File upload/download SDK
-- **Functions:** HTTP callable functions
+- **Functions:** HTTP callable functions (v2 API)
 
 ## Known Technical Decisions
 

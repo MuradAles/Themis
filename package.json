@@ -11,11 +11,15 @@
   },
   "dependencies": {
     "@tiptap/extension-collaboration": "^3.10.5",
+    "@tiptap/extension-underline": "^3.10.5",
     "@tiptap/react": "^3.10.5",
     "@tiptap/starter-kit": "^3.10.5",
     "date-fns": "^4.1.0",
     "file-saver": "^2.0.5",
     "firebase": "^12.5.0",
+    "mammoth": "^1.11.0",
+    "pagedjs": "^0.4.3",
+    "pdfjs-dist": "^5.4.394",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.5"

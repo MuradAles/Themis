@@ -54,7 +54,16 @@ Themis is an AI-driven web application designed to streamline the creation of de
 
 ## Current Status
 
-**Phase:** Initial Setup  
-**Status:** Project initialized with React + TypeScript + Vite template  
-**Next Steps:** Firebase integration and core feature development
+**Phase:** Phase 1-5 Complete, Enhanced Extraction Next  
+**Status:** 
+- ✅ Firebase project configured (themis-law)
+- ✅ Firebase Functions created (4 functions)
+- ✅ Frontend dependencies installed
+- ✅ Project structure created
+- ✅ Authentication & Routing complete (Email/Password + Google Sign-In)
+- ✅ Documents List page complete
+- ✅ Document Upload complete (basic text extraction)
+- ⏳ Planning enhanced document extraction with AI Vision API
+
+**Next Steps:** Implement AI Vision-based document analysis for scanned PDFs and complex layouts
 

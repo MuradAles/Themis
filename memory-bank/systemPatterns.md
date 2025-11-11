@@ -19,9 +19,12 @@ Themis follows a **client-server architecture** with Firebase as the backend pla
 │  ┌──────────┐  ┌──────────────┐  │
 │  │ Auth     │  │  Firestore   │  │
 │  └──────────┘  │  (Database)  │  │
-│  ┌──────────┐  └──────────────┘  │
-│  │ Storage  │  ┌──────────────┐  │
-│  └──────────┘  │  Functions   │  │
+│                │  - Extracted │  │
+│                │    Text      │  │
+│                │  - Letters   │  │
+│                └──────────────┘  │
+│                ┌──────────────┐  │
+│                │  Functions   │  │
 │                │  (Backend)   │  │
 │                └──────────────┘  │
 └──────────────────────────────────┘
@@ -44,9 +47,9 @@ Themis follows a **client-server architecture** with Firebase as the backend pla
 ### Backend Platform
 - **Firebase** for complete backend-as-a-service:
   - **Authentication:** Email/password auth
-  - **Firestore:** NoSQL database for documents and metadata
-  - **Storage:** File storage for uploaded documents
+  - **Firestore:** NoSQL database for extracted text and letter content
   - **Functions:** Serverless functions for AI operations
+  - **Note:** Firebase Storage is NOT used. All data stored in Firestore only.
 
 ### Rich Text Editing
 - **Tiptap** for rich text editing capabilities
@@ -82,13 +85,27 @@ src/
 
 ### Data Flow Patterns
 
+#### Document Upload & Extraction Flow
+```
+User Upload → Try Text Extraction (client-side)
+    ↓
+If text extraction succeeds → Save to Firestore
+If text extraction fails/poor → Call analyzeDocument Function
+    ↓
+Function: Convert PDF to images → OpenAI Vision API
+    ↓
+AI analyzes and extracts structured data + text
+    ↓
+Save structured data + text to Firestore
+```
+
 #### Document Generation Flow
 ```
-User Upload → Firebase Storage → Firestore Metadata
-    ↓
 User Clicks "Generate" → Firebase Function
     ↓
-Function Reads Documents → OpenAI API
+Function Reads Structured Data + Text from Firestore → OpenAI API
+    ↓
+AI generates letter using structured information
     ↓
 Generated Letter → Firestore → Editor Display
 ```
@@ -106,11 +123,11 @@ Manual Save → Firestore Update + Confirmation
 ```
 User Clicks Export → Firebase Function
     ↓
-Function: Letter Text → docx Library
+Function: Reads Letter from Firestore → docx Library
     ↓
-Word Document → Firebase Storage
+Word Document Buffer → Base64 → Frontend
     ↓
-Download URL → file-saver → User Download
+file-saver → Direct Download (NO Storage)
 ```
 
 ### State Management
@@ -122,11 +139,12 @@ Download URL → file-saver → User Download
 
 ### Security Patterns
 
-- **Authentication:** Firebase Auth with email/password
+- **Authentication:** Firebase Auth with email/password and Google Sign-In
+- **Protected Routes:** Auth-only check (no Firestore dependency in route protection)
 - **Authorization:** Firestore security rules based on `userId`
 - **Data Isolation:** Users can only access their own documents
-- **API Keys:** Stored securely in Firebase Functions config
-- **File Access:** Storage rules restrict access to authenticated users
+- **API Keys:** Stored securely in Firebase Functions secrets
+- **Data Storage:** All data in Firestore only (no Storage used)
 
 ## Component Relationships
 
@@ -186,7 +204,16 @@ DocumentsList.tsx (Page)
 {
   id: string;
   name: string;
-  url: string;            // Firebase Storage URL
+  extractedText: string;  // Extracted text from PDF/Word (NOT file URL)
+  structuredData?: {      // Optional structured information from AI Vision
+    parties?: string[];   // Names of parties involved
+    dates?: string[];     // Important dates
+    amounts?: number[];   // Monetary amounts
+    caseDetails?: string; // Case-specific information
+    summary?: string;     // AI-generated summary
+    [key: string]: any;   // Additional extracted fields
+  };
+  extractionMethod: "text" | "ai-vision";  // How text was extracted
   uploadedAt: Timestamp;
   documentId: string;     // Parent document reference
   userId: string;
@@ -196,9 +223,9 @@ DocumentsList.tsx (Page)
 ### Firebase Functions
 
 #### `generateLetter`
-- **Input:** `{ documentIds: string[] }`
+- **Input:** `{ sourceDocumentIds: string[] }`
 - **Output:** `{ letter: string }`
-- **Process:** Read documents → Extract text → Call OpenAI → Return letter
+- **Process:** Read extracted text from Firestore → Call OpenAI → Return letter (saves to Firestore)
 
 #### `refineLetter`
 - **Input:** `{ letter: string, instruction: string }`
@@ -210,10 +237,15 @@ DocumentsList.tsx (Page)
 - **Output:** `{ response: string, updates?: { letter: string } }`
 - **Process:** Chat completion with context → Return response and optional updates
 
+#### `analyzeDocument`
+- **Input:** `{ fileBuffer: string (base64), fileName: string, mimeType: string }`
+- **Output:** `{ extractedText: string, structuredData: object, extractionMethod: "ai-vision" }`
+- **Process:** Convert PDF pages to images → Send to OpenAI Vision API → Extract structured information → Return text + structured data
+
 #### `exportToWord`
-- **Input:** `{ letter: string, title: string }`
-- **Output:** `{ fileUrl: string }`
-- **Process:** Convert to .docx → Upload to Storage → Return URL
+- **Input:** `{ letter?: string, documentId?: string, title?: string }`
+- **Output:** `{ fileData: string (base64), fileName: string, mimeType: string }`
+- **Process:** Read letter from Firestore (if documentId) → Convert to .docx → Return base64 buffer (NO Storage)
 
 ## Key Patterns
 
@@ -244,12 +276,14 @@ DocumentsList.tsx (Page)
 
 ### Firebase Services
 - **Auth:** User authentication and session management
-- **Firestore:** Document storage and real-time sync
-- **Storage:** File uploads and downloads
+- **Firestore:** Extracted text and letter content storage with real-time sync
 - **Functions:** Serverless backend operations
+- **Note:** Storage is NOT used. All data stored in Firestore.
 
 ### External APIs
 - **OpenAI:** AI-powered text generation and refinement
+  - **GPT-4:** Text generation for letters
+  - **GPT-4 Vision:** Document analysis for scanned PDFs and complex layouts
 - **docx Library:** Word document creation (in Functions)
 
 ## Future Considerations
@@ -258,4 +292,5 @@ DocumentsList.tsx (Page)
 - **Collaboration:** Tiptap collaboration extension for multi-user editing
 - **Offline Support:** Service workers for offline document access
 - **Mobile:** Responsive design supports mobile browsers
+
 

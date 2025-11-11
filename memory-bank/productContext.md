@@ -36,12 +36,19 @@ Themis solves this by automating the draft generation process while maintaining 
 
 1. **Document Upload**
    - User uploads source documents (PDF, Word, text files)
-   - Documents stored securely in Firebase Storage
+   - **Hybrid Extraction Approach:**
+     - Try text extraction first (fast, cheap) - works for text-based PDFs
+     - If text extraction fails or returns poor results → Use AI Vision API
+   - AI Vision handles scanned PDFs, images, complex layouts, tables
+   - Extracted text + structured information saved to Firestore (NOT Storage)
    - Document metadata created in Firestore
 
 2. **Letter Generation**
-   - User initiates AI generation from uploaded documents
-   - AI analyzes source material and generates draft letter
+   - User initiates AI generation from extracted data
+   - Function reads extracted text + structured data from Firestore
+   - AI analyzes source material (using structured information when available)
+   - AI generates draft letter with better accuracy (thanks to structured data)
+   - Generated letter saved to Firestore
    - Draft appears in rich text editor for review
 
 3. **Editing & Refinement**
@@ -52,8 +59,9 @@ Themis solves this by automating the draft generation process while maintaining 
 
 4. **Export & Sharing**
    - Export to professionally formatted Word document
-   - Download for printing or sharing
-   - Document saved to user's document library
+   - Function reads letter from Firestore
+   - Creates Word document and returns file buffer
+   - Direct download to user's computer (NOT saved to Storage)
 
 ### User Experience Goals
 
