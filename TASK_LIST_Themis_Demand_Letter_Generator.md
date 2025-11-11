@@ -519,14 +519,14 @@ documents/
 ---
 
 ### Task 8.2: Document Upload in Chat
-- [ ] Add "Select Documents" button at top of chat sidebar
-- [ ] Add file upload area (drag & drop or button)
-- [ ] Upload PDF to Firebase Storage
-- [ ] Save document metadata to Firestore:
+- [x] Add "Select Documents" button at top of chat sidebar
+- [x] Add file upload area (drag & drop or button)
+- [x] Upload PDF to Firebase Storage
+- [x] Save document metadata to Firestore:
   - name, storagePath, userId, uploadedAt, fileSize, mimeType
-- [ ] Auto-attach uploaded document to current letter
-- [ ] Show upload progress
-- [ ] Handle upload errors
+- [x] Auto-attach uploaded document to current letter
+- [x] Show upload progress
+- [x] Handle upload errors
 
 **Files Modified:**
 - `src/components/ChatSidebar.tsx`
@@ -535,13 +535,13 @@ documents/
 ---
 
 ### Task 8.3: Document Selection UI
-- [ ] Create expandable document selection section
-- [ ] Query Firestore for user's documents (sourceDocuments collection)
-- [ ] Display list with checkboxes (multi-select)
-- [ ] Add expand/collapse animation
-- [ ] Allow selecting multiple documents
-- [ ] Attach selected documents to current letter
-- [ ] Show selected count
+- [x] Create expandable document selection section
+- [x] Query Firestore for user's documents (sourceDocuments collection)
+- [x] Display list with checkboxes (multi-select)
+- [x] Add expand/collapse animation
+- [x] Allow selecting multiple documents
+- [x] Attach selected documents to current letter
+- [x] Show selected count
 
 **Files Modified:**
 - `src/components/ChatSidebar.tsx`
@@ -549,11 +549,11 @@ documents/
 ---
 
 ### Task 8.4: Attached Documents Display
-- [ ] Show attached documents section in chat sidebar
-- [ ] Display list of currently attached documents
-- [ ] Show document names and count
-- [ ] Add visual indicator (badge/chip)
-- [ ] Allow removing/detaching documents (future: delete option)
+- [x] Show attached documents section in chat sidebar
+- [x] Display list of currently attached documents
+- [x] Show document names and count
+- [x] Add visual indicator (badge/chip)
+- [x] Allow removing/detaching documents (future: delete option)
 
 **Files Modified:**
 - `src/components/ChatSidebar.tsx`
@@ -574,12 +574,12 @@ documents/
 ---
 
 ### Task 8.6: Generate Letter Command
-- [ ] Detect "create demand letter" or "generate letter" in chat
-- [ ] Get all attached document IDs
-- [ ] Call `generateLetter` function with sourceDocumentIds
-- [ ] Function downloads PDFs from Storage → OpenAI Vision → generates letter
-- [ ] Insert generated letter into editor
-- [ ] Show success message in chat
+- [x] Detect "create demand letter" or "generate letter" in chat
+- [x] Get all attached document IDs
+- [x] Call `generateLetter` function with sourceDocumentIds
+- [x] Function downloads PDFs from Storage → OpenAI Vision → generates letter
+- [x] Insert generated letter into editor
+- [x] Show success message in chat
 
 **Files Modified:**
 - `src/components/ChatSidebar.tsx`
@@ -589,9 +589,13 @@ documents/
 
 ### Task 8.7: Chat Integration
 - [x] Connect chat to `chatWithAI` function
-- [ ] Update chat to pass attached document IDs
-- [ ] Update `chatWithAI` function to use attached documents
-- [ ] Test full chat flow with document generation
+- [x] Update chat to pass attached document IDs
+- [x] Update `chatWithAI` function to use attached documents
+- [x] Implement streaming chat with real-time updates
+- [x] Filter document markers from chat display
+- [x] Clean AI confirmations (remove full document content)
+- [x] Filter empty AI messages
+- [x] Fix document newline issues
 
 **Files Modified:**
 - `src/pages/Editor.tsx`
