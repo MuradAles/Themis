@@ -5,7 +5,6 @@
  * - generateLetter: Generate demand letter from extracted text in Firestore
  * - refineLetter: Refine existing letter based on instructions
  * - chatWithAI: Chat interface with AI for letter editing
- * - exportToWord: Export letter to Word document format (direct download)
  */
 
 import {initializeApp} from "firebase-admin/app";
@@ -16,8 +15,7 @@ import {onCall, onRequest, HttpsError} from "firebase-functions/v2/https";
 import {defineSecret} from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
 import OpenAI from "openai";
-import {Document, Packer, Paragraph, TextRun} from "docx";
-const pdfParse = require("pdf-parse");
+import {Readable} from "stream";
 
 // Initialize Firebase Admin
 initializeApp();
@@ -94,74 +92,244 @@ export const generateLetter = onCall(
         }
       }
 
-      // Extract text from PDFs
-      const documentTexts: string[] = [];
+      // Upload PDFs to OpenAI Files API and get file IDs
+      const openai = getOpenAIClient();
+      const fileIds: string[] = [];
+      const fileIdToName: Map<string, string> = new Map();
+      
       for (const pdf of pdfFiles) {
         try {
-          const pdfData = await pdfParse(pdf.data);
-          const extractedText = pdfData.text;
-          documentTexts.push(`--- Document: ${pdf.name} ---\n${extractedText}\n`);
-          logger.info(`Extracted text from ${pdf.name}: ${extractedText.length} characters`);
+          // Create a proper Readable stream from Buffer
+          const fileStream = new Readable();
+          fileStream.push(pdf.data);
+          fileStream.push(null); // End the stream
+          
+          // Create a File-like object that OpenAI SDK expects
+          const fileName = pdf.name.endsWith('.pdf') ? pdf.name : `${pdf.name}.pdf`;
+          const fileLike = Object.assign(fileStream, {
+            name: fileName,
+            type: 'application/pdf',
+          }) as any;
+          
+          // Upload file to OpenAI using the SDK
+          // For Chat Completions API, use purpose: "user_data"
+          const fileResponse = await openai.files.create({
+            file: fileLike,
+            purpose: 'user_data', // Required for Chat Completions API
+          });
+
+          fileIds.push(fileResponse.id);
+          fileIdToName.set(fileResponse.id, pdf.name);
+          logger.info(`Uploaded PDF to OpenAI: ${pdf.name} (file_id: ${fileResponse.id})`);
+          
+          // Wait for file to be processed (check status)
+          let fileReady = false;
+          let attempts = 0;
+          while (!fileReady && attempts < 10) {
+            const fileStatus = await openai.files.retrieve(fileResponse.id);
+            logger.info(`File ${fileResponse.id} status: ${fileStatus.status}`);
+            if (fileStatus.status === 'processed') {
+              fileReady = true;
+            } else {
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+              attempts++;
+            }
+          }
+          
+          if (!fileReady) {
+            logger.warn(`File ${fileResponse.id} not processed after 10 attempts`);
+          }
         } catch (error) {
-          logger.error(`Failed to extract text from ${pdf.name}:`, error);
-          // Continue with other documents even if one fails
-          documentTexts.push(`--- Document: ${pdf.name} ---\n[Error: Could not extract text from this PDF]\n`);
+          logger.error(`Failed to upload PDF ${pdf.name} to OpenAI:`, error);
+          throw new HttpsError("internal", `Failed to upload document ${pdf.name} to OpenAI`);
         }
       }
+      
+      if (fileIds.length === 0) {
+        throw new HttpsError("internal", "No files were successfully uploaded to OpenAI");
+      }
+      
+      logger.info(`Successfully uploaded ${fileIds.length} files: ${fileIds.join(', ')}`);
 
-      const combinedText = documentTexts.join("\n\n");
+      // Build document list with names for the prompt
+      const documentList = fileIds.map((fileId, index) => {
+        const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
+        return `Document ${index + 1} (file_id: ${fileId}): "${docName}"`;
+      }).join('\n');
+
+      // Build message content with file references
+      // For gpt-4o with files, we use the content array with file references
+      const userContent: any[] = [
+        {
+          type: "text",
+          text: `Please generate a demand letter based on the attached source documents.
+
+STEP-BY-STEP PROCESS:
+
+STEP 1: READ THE ATTACHED PDF FILES
+You have ${fileIds.length} PDF document(s) attached. You MUST read each PDF file completely before generating the letter.
+
+Attached documents:
+${documentList}
+
+STEP 2: EXTRACT INFORMATION FROM EACH PDF
+For each PDF document, extract ALL of the following information that is explicitly stated:
+- Client/Plaintiff names (tenant, employee, customer, etc.)
+- Recipient/Defendant names (landlord, employer, company, etc.)
+- Law firm names (if mentioned)
+- Dates (incident date, move-out date, invoice date, deadline, etc.)
+- Addresses (property address, mailing address, business address, etc.)
+- Amounts (security deposit, unpaid wages, invoice amount, damages, etc.)
+- Phone numbers
+- Email addresses
+- Case numbers, reference numbers, invoice numbers
+- Any other factual information relevant to the demand letter
+
+STEP 3: USE EXTRACTED INFORMATION TO FILL THE LETTER
+- Fill the demand letter with ACTUAL data extracted from the PDFs
+- Use real names, dates, amounts, addresses from the documents
+- DO NOT create a generic template - use the actual extracted information
+- DO NOT use placeholders like "[Put client name here]" - use the actual names from the documents
+
+STEP 4: USE PLACEHOLDERS ONLY FOR MISSING INFORMATION
+Only use simple bracket placeholders for information that is TRULY NOT in any of the documents:
+- [client name] - only if no client name found in any document
+- [date] - only if no relevant dates found
+- [recipient name] - only if no recipient name found
+- [amount] - only if no amounts found
+- [address] - only if no addresses found
+- [phone number] - only if no phone numbers found
+- [email] - only if no email addresses found
+- [law firm name] - only if no law firm name found
+- [case number] - only if no case numbers found
+
+CRITICAL: DO NOT create a generic template. Extract real information from the PDFs and use it in the letter. Only use placeholders for information that is genuinely missing.
+
+FORMATTING REQUIREMENTS:
+- Output ONLY clean HTML format (use <p>, <strong>, <em>, <u> tags)
+- DO NOT use markdown syntax (no **, __, ---, #, code blocks, etc.)
+- DO NOT wrap content in code blocks (no markdown code fences)
+- DO NOT add comments, instructions, or notes in the document
+- DO NOT include text like "Please ensure all provided details are accurate" or "Please complete any placeholders"
+- DO NOT add explanatory text like "This draft uses..." or "Let me know if..."
+- DO NOT add any text before or after the document content
+- Use <strong> for bold, <em> for italic, <u> for underline
+- Use <p> tags for paragraphs
+- The document should contain ONLY the actual letter content, nothing else
+- Start directly with the HTML content, no code blocks, no explanations
+
+Generate a professional, well-structured demand letter using the ACTUAL information extracted from the attached PDF documents. Output clean HTML with NO markdown, NO code blocks, NO comments, NO instructions, NO explanatory text.`,
+        },
+      ];
+
+      // Add file references - use nested format: file: { file_id: ... }
+      for (const fileId of fileIds) {
+        userContent.push({
+          type: "file",
+          file: {
+            file_id: fileId,
+          },
+        });
+      }
+      
+      logger.info(`User content structure: ${JSON.stringify(userContent.map(item => ({ type: item.type, file_id: (item as any).file_id || 'N/A', file: (item as any).file || 'N/A', text: item.text ? item.text.substring(0, 50) + '...' : 'N/A' })))}`);
+      logger.info(`File IDs: ${fileIds.join(', ')}`);
 
       // Call OpenAI to generate the letter
-      const openai = getOpenAIClient();
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: [
           {
             role: "system",
             content: `You are a legal assistant specializing in drafting professional demand letters. 
-            Analyze the provided source documents and generate a comprehensive, professional demand letter.
+            You analyze source documents (PDFs) and extract information to generate comprehensive, professional demand letters.
             
             CRITICAL RULES:
-            1. Use ONLY information that is explicitly stated in the source documents
-            2. If information is missing or unclear, use descriptive placeholders that tell the user what to fill in:
-               - "Put your name here" or "Put client name here" for missing client/plaintiff name
-               - "Put recipient name here" or "Put defendant name here" for missing defendant/recipient name
-               - "Put date here" or "Put incident date here" for missing dates
-               - "Put amount here" or "Put dollar amount here" for missing monetary amounts
-               - "Put address here" for missing addresses
-               - "Put case details here" for missing case-specific information
-               - "Put reference number here" for missing reference numbers
-               - "Put [specific information] here" format for any other missing information
-            3. DO NOT fabricate, invent, or guess any information
-            4. DO NOT make assumptions about missing details
-            5. If a fact is not in the documents, use a descriptive placeholder that clearly indicates what needs to be filled in
-            6. Placeholders should be clear instructions to the user, not just brackets
+            1. FIRST: READ the attached PDF files completely. You must read and process each PDF document.
+            2. SECOND: EXTRACT all information explicitly stated in the PDFs (names, dates, amounts, addresses, phone numbers, emails, etc.)
+            3. THIRD: USE the extracted information to fill the demand letter with REAL data from the documents
+            4. DO NOT create a generic template - the letter must contain actual extracted information
+            5. DO NOT fabricate, invent, or guess any information
+            6. For information NOT found in any document, use simple bracket placeholders: [client name], [date], [amount], [address], [phone number], [email], etc.
+            7. Only use placeholders for information that is truly missing from all documents
+            
+            FORMATTING RULES:
+            - Output ONLY clean HTML format (use <p>, <strong>, <em>, <u> tags)
+            - DO NOT use markdown syntax (no **, __, ---, #, code blocks, etc.)
+            - DO NOT wrap content in code blocks (no markdown code fences)
+            - DO NOT add comments, instructions, or notes in the document
+            - DO NOT include text like "Please ensure all provided details are accurate"
+            - DO NOT add explanatory text like "This draft uses..." or "Let me know if..."
+            - DO NOT add any text before or after the document content
+            - Use <strong> for bold, <em> for italic, <u> for underline
+            - Use <p> tags for paragraphs
+            - The document should contain ONLY the actual letter content, nothing else
+            - Start directly with the HTML content, no code blocks, no explanations
             
             The letter should be:
             - Clear and professional in tone
             - Well-structured with proper legal formatting
-            - Based ONLY on facts from the source documents
-            - Use placeholders for any missing information
-            - Appropriate for legal correspondence`,
+            - Based on REAL facts extracted from reading the PDF documents
+            - Use bracket placeholders only for information that is genuinely missing
+            - Appropriate for legal correspondence
+            - Clean HTML output with NO markdown, NO comments, NO instructions`,
           },
           {
             role: "user",
-            content: `Please generate a demand letter based on the following source documents. 
-            Use ONLY information that is explicitly stated in these documents. 
-            For any missing information, use descriptive placeholders that tell the user what to fill in, 
-            like "Put your name here", "Put date here", "Put amount here", "Put address here", etc.
-            DO NOT use bracket notation like [CLIENT NAME]. Instead, use clear instructions like "Put client name here".
-            DO NOT make up or invent any information.\n\nSource Documents:\n\n${combinedText}`,
+            content: userContent,
           },
         ],
         temperature: 0.7,
         max_tokens: 2000,
       });
 
-      const generatedLetter = completion.choices[0]?.message?.content || "";
+      let generatedLetter = completion.choices[0]?.message?.content || "";
 
       if (!generatedLetter) {
         throw new HttpsError("internal", "Failed to generate letter from OpenAI");
+      }
+
+      // Clean up the response: remove code blocks and explanatory text
+      // Remove markdown code blocks (```plaintext, ```html, ```, etc.)
+      generatedLetter = generatedLetter.replace(/```[\w]*\n?/g, '').replace(/```/g, '');
+      
+      // Remove common explanatory text patterns
+      const explanatoryPatterns = [
+        /This draft uses.*?extracted from the PDF.*?/gi,
+        /Let me know if.*?changes.*?/gi,
+        /This draft.*?comprehensive demand letter.*?/gi,
+        /I've created.*?demand letter.*?/gi,
+        /Here is.*?demand letter.*?/gi,
+      ];
+      
+      for (const pattern of explanatoryPatterns) {
+        generatedLetter = generatedLetter.replace(pattern, '').trim();
+      }
+      
+      // Remove any trailing explanatory sentences
+      const lines = generatedLetter.split('\n');
+      if (lines.length > 3) {
+        const lastFewLines = lines.slice(-3).join(' ').toLowerCase();
+        if (lastFewLines.includes('let me know') || 
+            lastFewLines.includes('this draft') || 
+            lastFewLines.includes('if you need') ||
+            lastFewLines.includes('additional information')) {
+          // Remove last 3 lines if they look like explanatory text
+          generatedLetter = lines.slice(0, -3).join('\n').trim();
+        }
+      }
+      
+      generatedLetter = generatedLetter.trim();
+
+      // Clean up uploaded files from OpenAI
+      for (const fileId of fileIds) {
+        try {
+          await openai.files.delete(fileId);
+          logger.info(`Deleted file from OpenAI: ${fileId}`);
+        } catch (error) {
+          logger.warn(`Failed to delete file ${fileId} from OpenAI:`, error);
+          // Don't fail the request if cleanup fails
+        }
       }
 
       logger.info(`Successfully generated letter for user ${userId}`);
@@ -268,10 +436,12 @@ export const chatWithAI = onCall(
       const userId = request.auth.uid;
       logger.info(`Chat request from user ${userId}`);
 
-      // Build context from documents if provided
-      let documentContext = "";
+      // Download PDFs from Storage and upload to OpenAI if documents are provided
+      const openai = getOpenAIClient();
+      const fileIds: string[] = [];
+      const fileIdToName: Map<string, string> = new Map();
+      
       if (sourceDocumentIds && Array.isArray(sourceDocumentIds) && sourceDocumentIds.length > 0) {
-        const documentTexts: string[] = [];
         for (const docId of sourceDocumentIds) {
           try {
             const docRef = db.collection("sourceDocuments").doc(docId);
@@ -279,16 +449,57 @@ export const chatWithAI = onCall(
 
             if (docSnap.exists) {
               const docData = docSnap.data();
-              if (docData?.extractedText) {
-                const text = docData.extractedText.substring(0, 1000);
-                documentTexts.push(`--- Document: ${docData.name || docId} ---\n${text}...`);
+              if (docData?.storagePath) {
+                const documentName = docData.name || docId;
+                
+                // Download PDF from Storage
+                const bucket = storage.bucket();
+                const file = bucket.file(docData.storagePath);
+                const [fileBuffer] = await file.download();
+
+                // Create a proper Readable stream from Buffer
+                const fileStream = new Readable();
+                fileStream.push(fileBuffer);
+                fileStream.push(null); // End the stream
+                
+                // Create a File-like object that OpenAI SDK expects
+                const fileName = documentName.endsWith('.pdf') ? documentName : `${documentName}.pdf`;
+                const fileLike = Object.assign(fileStream, {
+                  name: fileName,
+                  type: 'application/pdf',
+                }) as any;
+                
+                // Upload to OpenAI Files API
+                const fileResponse = await openai.files.create({
+                  file: fileLike,
+                  purpose: 'user_data', // Required for Chat Completions API
+                });
+
+                fileIds.push(fileResponse.id);
+                fileIdToName.set(fileResponse.id, documentName);
+                logger.info(`Uploaded document ${documentName} to OpenAI (file_id: ${fileResponse.id})`);
               }
             }
           } catch (error) {
-            logger.warn(`Failed to load document ${docId}:`, error);
+            logger.warn(`Failed to process document ${docId}:`, error);
           }
         }
-        documentContext = "\n\nRelevant documents:\n" + documentTexts.join("\n\n");
+      }
+
+      // Build document context message with names
+      let documentContext = "";
+      if (fileIds.length > 0) {
+        const documentList = fileIds.map((fileId, index) => {
+          const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
+          return `Document ${index + 1}: "${docName}" (file_id: ${fileId})`;
+        }).join('\n');
+        
+        documentContext = `\n\nYou have access to ${fileIds.length} source document(s) that have been uploaded. You MUST read these PDF files to extract information.
+
+Attached documents:
+${documentList}
+
+CRITICAL: When the user asks about information or requests changes, you MUST read the attached PDF documents first to extract the actual information. Use real data from the documents, not placeholders.`;
       }
 
       // Build conversation messages
@@ -296,8 +507,39 @@ export const chatWithAI = onCall(
         {
           role: "system",
           content: `You are a legal assistant helping to draft and refine demand letters. 
-          You can answer questions about the documents, suggest improvements to the letter, 
-          and help with legal writing.${documentContext}`,
+          
+          CRITICAL RULES:
+          1. You ONLY work on the document. All your actions modify the document, not the chat.
+          2. When the user gives a COMMAND or INSTRUCTION, IMMEDIATELY update the document:
+             - Examples: "change phone number", "update name", "make it more formal", "make it casual", "change tone", "change format", "make it professional", "make it friendly", etc.
+             - IMMEDIATELY update the document with the changes
+             - DO NOT respond in chat with explanations or questions
+             - DO NOT ask "what do you want to change?" - just make the change
+             - DO NOT ask for clarification - interpret the command and execute it
+             - For style/tone changes: rewrite the document in the requested style (formal, casual, professional, friendly, etc.)
+             - DO NOT ask for information - just use bracket placeholders like [client name], [date], [email], [phone number], etc.
+             - Return the updated document in UPDATED_DOCUMENT_START/END format
+             - After UPDATED_DOCUMENT_END, provide ONLY a brief confirmation (1 sentence max) like "I've updated the document to be more formal." or "I've changed the tone to casual."
+          3. When the user asks a QUESTION (like "what is this?", "explain", "how does this work?", etc.):
+             - You can respond in chat to answer the question
+             - But still focus on the document context
+          4. For "create doc" commands:
+             - IMMEDIATELY create a demand letter template with bracket placeholders for ANY missing information
+             - Use simple bracket notation: [client name], [date], [recipient name], [amount], [address], [phone number], [email], [deadline], [law firm name], [case number], etc.
+             - If ANY information is missing, use [something] format (e.g., [email], [phone], [address], [date])
+             - DO NOT ask questions - just create it with placeholders
+             - Return it in UPDATED_DOCUMENT_START/END format
+          
+          FORMATTING RULES:
+          - Output ONLY clean HTML format (use <p>, <strong>, <em>, <u> tags)
+          - DO NOT use markdown syntax (no **, __, ---, #, etc.)
+          - DO NOT add comments, instructions, or notes in the document
+          - DO NOT include text like "Please ensure all provided details are accurate" or "Please complete any placeholders"
+          - Use <strong> for bold, <em> for italic, <u> for underline
+          - Use <p> tags for paragraphs
+          - The document should contain ONLY the actual letter content, nothing else
+          
+          ${documentContext}`,
         },
       ];
 
@@ -311,46 +553,94 @@ export const chatWithAI = onCall(
       if (currentLetter) {
         messages.push({
           role: "system",
-          content: `You are working with this document. When the user asks to change, update, or provide information, you must actually modify the document content.
+          content: `You are working with this document. When the user gives ANY command or instruction, you must actually modify the document content.
 
 Current document content:
 ${currentLetter}
 
 CRITICAL INSTRUCTIONS:
-1. Understand what the user wants to change (phone number, name, address, law firm name, etc.)
-2. Find the relevant text in the document (look for placeholders like "Put phone number here" or actual existing text)
-3. Replace it with the new information the user provided
-4. You MUST return the COMPLETE updated document in this exact format (this will be extracted automatically, not shown to user):
+1. ALL user commands must result in document changes:
+   - Specific changes: "change phone number to X", "update name to Y", "change date to Z"
+   - Style/tone changes: "make it more formal", "make it casual", "change tone", "change format", "make it professional", "make it friendly"
+   - For style changes: REWRITE the entire document in the requested style while keeping all factual information
+2. DO NOT ask for clarification - interpret the command and execute it
+3. DO NOT say "I'm not sure what you want to change" - just make the change based on your best interpretation
+4. Find the relevant text in the document (look for placeholders like [phone number] or actual existing text)
+5. Replace it with the new information or rewrite in the requested style
+6. You MUST return the COMPLETE updated document in this exact format (this will be extracted automatically, not shown to user):
 
 UPDATED_DOCUMENT_START
 [put the complete updated document content here]
 UPDATED_DOCUMENT_END
 
-5. After the UPDATED_DOCUMENT_END, provide ONLY a simple confirmation message (1-2 sentences max):
-   - If successful: "I've updated the [thing] to [value]." or "I've changed the [thing]."
-   - If you couldn't find it: "Sorry, I couldn't find [thing] to update. Could you clarify where it should be?"
-   - If you don't understand: "I'm not sure what you want to change. Could you clarify?"
+7. After the UPDATED_DOCUMENT_END, provide ONLY a simple confirmation message (1 sentence max):
+   - If successful: "I've updated the [thing]." or "I've changed the document to be more [style]."
+   - NEVER ask for clarification - always make a change
 
 DO NOT repeat the document content in your confirmation. Keep it short and simple.`,
         });
       }
 
-      // Add user message
+      // Build user message with file references if available
+      if (fileIds.length > 0) {
+        const documentList = fileIds.map((fileId, index) => {
+          const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
+          return `Document ${index + 1}: "${docName}" (file_id: ${fileId})`;
+        }).join('\n');
+        
+        const userContent: any[] = [
+          {
+            type: "text",
+            text: `${message}
+
+IMPORTANT: You have ${fileIds.length} PDF document(s) attached. You MUST read these PDF files to extract information before responding.
+
+Attached documents:
+${documentList}
+
+CRITICAL: If the user's message requires information from the documents, you MUST read the attached PDF files first to extract the actual information. Use real data from the documents, not placeholders.`,
+          },
+        ];
+        // Add file references - use nested format: file: { file_id: ... }
+        for (const fileId of fileIds) {
+          userContent.push({
+            type: "file",
+            file: {
+              file_id: fileId,
+            },
+          });
+        }
+        messages.push({
+          role: "user",
+          content: userContent,
+        });
+      } else {
       messages.push({
         role: "user",
         content: message,
       });
+      }
 
       // Call OpenAI
-      const openai = getOpenAIClient();
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: fileIds.length > 0 ? "gpt-4o" : "gpt-4o-mini",
         messages,
         temperature: 0.7,
         max_tokens: 2000,
       });
 
       const aiResponse = completion.choices[0]?.message?.content || "";
+
+      // Clean up uploaded files from OpenAI
+      for (const fileId of fileIds) {
+        try {
+          await openai.files.delete(fileId);
+          logger.info(`Deleted file from OpenAI: ${fileId}`);
+        } catch (error) {
+          logger.warn(`Failed to delete file ${fileId} from OpenAI:`, error);
+          // Don't fail the request if cleanup fails
+        }
+      }
 
       if (!aiResponse) {
         throw new HttpsError("internal", "Failed to get response from OpenAI");
@@ -463,6 +753,10 @@ export const chatWithAIStream = onRequest(
       return;
     }
 
+    // Declare variables outside try block so they're accessible in catch
+    const openai = getOpenAIClient();
+    const fileIds: string[] = [];
+    
     try {
       const { message, sourceDocumentIds, conversationHistory, currentLetter, authToken } = request.body;
 
@@ -489,27 +783,68 @@ export const chatWithAIStream = onRequest(
 
       logger.info(`Streaming chat request from user ${userId}`);
 
-      // Build context from documents if provided
-      let documentContext = "";
+      // Download PDFs from Storage and upload to OpenAI if documents are provided
+      const fileIdToName: Map<string, string> = new Map();
+      
       if (sourceDocumentIds && Array.isArray(sourceDocumentIds) && sourceDocumentIds.length > 0) {
-        const documentTexts: string[] = [];
         for (const docId of sourceDocumentIds) {
           try {
             const docRef = db.collection("sourceDocuments").doc(docId);
-            const docSnap = await docRef.get();
+        const docSnap = await docRef.get();
 
             if (docSnap.exists) {
               const docData = docSnap.data();
-              if (docData?.extractedText) {
-                const text = docData.extractedText.substring(0, 1000);
-                documentTexts.push(`--- Document: ${docData.name || docId} ---\n${text}...`);
+              if (docData?.storagePath) {
+                const documentName = docData.name || docId;
+                
+                // Download PDF from Storage
+                const bucket = storage.bucket();
+                const file = bucket.file(docData.storagePath);
+                const [fileBuffer] = await file.download();
+
+                // Create a proper Readable stream from Buffer
+                const fileStream = new Readable();
+                fileStream.push(fileBuffer);
+                fileStream.push(null); // End the stream
+                
+                // Create a File-like object that OpenAI SDK expects
+                const fileName = documentName.endsWith('.pdf') ? documentName : `${documentName}.pdf`;
+                const fileLike = Object.assign(fileStream, {
+                  name: fileName,
+                  type: 'application/pdf',
+                }) as any;
+                
+                // Upload to OpenAI Files API
+                const fileResponse = await openai.files.create({
+                  file: fileLike,
+                  purpose: 'user_data', // Required for Chat Completions API
+                });
+
+                fileIds.push(fileResponse.id);
+                fileIdToName.set(fileResponse.id, documentName);
+                logger.info(`Uploaded document ${documentName} to OpenAI (file_id: ${fileResponse.id})`);
               }
             }
           } catch (error) {
-            logger.warn(`Failed to load document ${docId}:`, error);
+            logger.warn(`Failed to process document ${docId}:`, error);
           }
         }
-        documentContext = "\n\nRelevant documents:\n" + documentTexts.join("\n\n");
+      }
+
+      // Build document context message with names
+      let documentContext = "";
+      if (fileIds.length > 0) {
+        const documentList = fileIds.map((fileId, index) => {
+          const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
+          return `Document ${index + 1}: "${docName}" (file_id: ${fileId})`;
+        }).join('\n');
+        
+        documentContext = `\n\nYou have access to ${fileIds.length} source document(s) that have been uploaded. You MUST read these PDF files to extract information.
+
+Attached documents:
+${documentList}
+
+CRITICAL: When the user asks about information or requests changes, you MUST read the attached PDF documents first to extract the actual information. Use real data from the documents, not placeholders.`;
       }
 
       // Build conversation messages
@@ -517,8 +852,39 @@ export const chatWithAIStream = onRequest(
         {
           role: "system",
           content: `You are a legal assistant helping to draft and refine demand letters. 
-          You can answer questions about the documents, suggest improvements to the letter, 
-          and help with legal writing.${documentContext}`,
+          
+          CRITICAL RULES:
+          1. You ONLY work on the document. All your actions modify the document, not the chat.
+          2. When the user gives a COMMAND or INSTRUCTION, IMMEDIATELY update the document:
+             - Examples: "change phone number", "update name", "make it more formal", "make it casual", "change tone", "change format", "make it professional", "make it friendly", etc.
+             - IMMEDIATELY update the document with the changes
+             - DO NOT respond in chat with explanations or questions
+             - DO NOT ask "what do you want to change?" - just make the change
+             - DO NOT ask for clarification - interpret the command and execute it
+             - For style/tone changes: rewrite the document in the requested style (formal, casual, professional, friendly, etc.)
+             - DO NOT ask for information - just use bracket placeholders like [client name], [date], [email], [phone number], etc.
+             - Return the updated document in UPDATED_DOCUMENT_START/END format
+             - After UPDATED_DOCUMENT_END, provide ONLY a brief confirmation (1 sentence max) like "I've updated the document to be more formal." or "I've changed the tone to casual."
+          3. When the user asks a QUESTION (like "what is this?", "explain", "how does this work?", etc.):
+             - You can respond in chat to answer the question
+             - But still focus on the document context
+          4. For "create doc" commands:
+             - IMMEDIATELY create a demand letter template with bracket placeholders for ANY missing information
+             - Use simple bracket notation: [client name], [date], [recipient name], [amount], [address], [phone number], [email], [deadline], [law firm name], [case number], etc.
+             - If ANY information is missing, use [something] format (e.g., [email], [phone], [address], [date])
+             - DO NOT ask questions - just create it with placeholders
+             - Return it in UPDATED_DOCUMENT_START/END format
+          
+          FORMATTING RULES:
+          - Output ONLY clean HTML format (use <p>, <strong>, <em>, <u> tags)
+          - DO NOT use markdown syntax (no **, __, ---, #, etc.)
+          - DO NOT add comments, instructions, or notes in the document
+          - DO NOT include text like "Please ensure all provided details are accurate" or "Please complete any placeholders"
+          - Use <strong> for bold, <em> for italic, <u> for underline
+          - Use <p> tags for paragraphs
+          - The document should contain ONLY the actual letter content, nothing else
+          
+          ${documentContext}`,
         },
       ];
 
@@ -531,35 +897,73 @@ export const chatWithAIStream = onRequest(
       if (currentLetter) {
         messages.push({
           role: "system",
-          content: `You are working with this document. When the user asks to change, update, or provide information, you must actually modify the document content.
+          content: `You are working with this document. When the user gives ANY command or instruction, you must actually modify the document content.
 
 Current document content:
 ${currentLetter}
 
 CRITICAL INSTRUCTIONS:
-1. Understand what the user wants to change (phone number, name, address, law firm name, etc.)
-2. Find the relevant text in the document (look for placeholders like "Put phone number here" or actual existing text)
-3. Replace it with the new information the user provided
-4. You MUST return the COMPLETE updated document in this exact format (this will be extracted automatically, not shown to user):
+1. ALL user commands must result in document changes:
+   - Specific changes: "change phone number to X", "update name to Y", "change date to Z"
+   - Style/tone changes: "make it more formal", "make it casual", "change tone", "change format", "make it professional", "make it friendly"
+   - For style changes: REWRITE the entire document in the requested style while keeping all factual information
+2. DO NOT ask for clarification - interpret the command and execute it
+3. DO NOT say "I'm not sure what you want to change" - just make the change based on your best interpretation
+4. Find the relevant text in the document (look for placeholders like [phone number] or actual existing text)
+5. Replace it with the new information or rewrite in the requested style
+6. You MUST return the COMPLETE updated document in this exact format (this will be extracted automatically, not shown to user):
 
 UPDATED_DOCUMENT_START
 [put the complete updated document content here]
 UPDATED_DOCUMENT_END
 
-5. After the UPDATED_DOCUMENT_END, provide ONLY a simple confirmation message (1-2 sentences max):
-   - If successful: "I've updated the [thing] to [value]." or "I've changed the [thing]."
-   - If you couldn't find it: "Sorry, I couldn't find [thing] to update. Could you clarify where it should be?"
-   - If you don't understand: "I'm not sure what you want to change. Could you clarify?"
+7. After the UPDATED_DOCUMENT_END, provide ONLY a simple confirmation message (1 sentence max):
+   - If successful: "I've updated the [thing]." or "I've changed the document to be more [style]."
+   - NEVER ask for clarification - always make a change
 
 DO NOT repeat the document content in your confirmation. Keep it short and simple.`,
         });
       }
 
-      // Add user message
-      messages.push({
-        role: "user",
-        content: message,
-      });
+      // Build user message with file references if available
+      if (fileIds.length > 0) {
+        const documentList = fileIds.map((fileId, index) => {
+          const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
+          return `Document ${index + 1}: "${docName}" (file_id: ${fileId})`;
+        }).join('\n');
+        
+        const userContent: any[] = [
+          {
+            type: "text",
+            text: `${message}
+
+IMPORTANT: You have ${fileIds.length} PDF document(s) attached. You MUST read these PDF files to extract information before responding.
+
+Attached documents:
+${documentList}
+
+CRITICAL: If the user's message requires information from the documents, you MUST read the attached PDF files first to extract the actual information. Use real data from the documents, not placeholders.`,
+          },
+        ];
+        // Add file references - use nested format: file: { file_id: ... }
+        for (const fileId of fileIds) {
+          userContent.push({
+            type: "file",
+            file: {
+              file_id: fileId,
+            },
+          });
+        }
+        messages.push({
+          role: "user",
+          content: userContent,
+        });
+      } else {
+        messages.push({
+          role: "user",
+          content: message,
+        });
+      }
 
       // Set up Server-Sent Events
       response.setHeader('Content-Type', 'text/event-stream');
@@ -567,9 +971,8 @@ DO NOT repeat the document content in your confirmation. Keep it short and simpl
       response.setHeader('Connection', 'keep-alive');
 
       // Call OpenAI with streaming
-      const openai = getOpenAIClient();
       const stream = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: fileIds.length > 0 ? "gpt-4o" : "gpt-4o-mini",
         messages,
         temperature: 0.7,
         max_tokens: 2000,
@@ -680,110 +1083,36 @@ DO NOT repeat the document content in your confirmation. Keep it short and simpl
 
       response.write(`data: ${JSON.stringify({ type: 'message_final', content: finalMessage || "I've updated the document." })}\n\n`);
       response.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      
+      // Clean up uploaded files from OpenAI
+      for (const fileId of fileIds) {
+        try {
+          await openai.files.delete(fileId);
+          logger.info(`Deleted file from OpenAI: ${fileId}`);
+        } catch (error) {
+          logger.warn(`Failed to delete file ${fileId} from OpenAI:`, error);
+          // Don't fail the request if cleanup fails
+        }
+      }
+      
       response.end();
 
     } catch (error) {
       logger.error("Error in streaming chat:", error);
+      
+      // Clean up uploaded files even on error
+      for (const fileId of fileIds) {
+        try {
+          await openai.files.delete(fileId);
+          logger.info(`Deleted file from OpenAI after error: ${fileId}`);
+        } catch (cleanupError) {
+          logger.warn(`Failed to delete file ${fileId} from OpenAI:`, cleanupError);
+        }
+      }
+      
       response.write(`data: ${JSON.stringify({ type: 'error', content: error instanceof Error ? error.message : String(error) })}\n\n`);
       response.end();
     }
   }
 );
 
-/**
- * Task 2.4: Export to Word Function
- * Exports letter to Word document format (direct download, no Storage)
- */
-export const exportToWord = onCall(
-  {
-    timeoutSeconds: 60,
-    memory: "256MiB",
-  },
-  async (request) => {
-    try {
-      const {letter, documentId, title} = request.data;
-
-      if (!request.auth) {
-        throw new Error("Authentication required");
-      }
-
-      const userId = request.auth.uid;
-      let letterContent = letter;
-      let documentTitle = title;
-
-      // If documentId provided, read from Firestore
-      if (documentId && !letterContent) {
-        const docRef = db.collection("documents").doc(documentId);
-        const docSnap = await docRef.get();
-
-        if (!docSnap.exists) {
-          throw new Error(`Document ${documentId} not found`);
-        }
-
-        const docData = docSnap.data();
-        if (!docData || !docData.content) {
-          throw new Error(`Document ${documentId} has no content`);
-        }
-
-        letterContent = docData.content;
-        if (!documentTitle && docData.title) {
-          documentTitle = docData.title;
-        }
-      }
-
-      if (!letterContent || typeof letterContent !== "string") {
-        throw new HttpsError("invalid-argument", "letter content is required");
-      }
-
-      logger.info(`Exporting letter to Word for user ${userId}`);
-
-      // Parse letter into paragraphs (split by double newlines)
-      const paragraphs = letterContent
-        .split(/\n\s*\n/)
-        .filter((p) => p.trim().length > 0)
-        .map((text) => {
-          return new Paragraph({
-            children: [
-              new TextRun({
-                text: text.trim(),
-                size: 24, // 12pt
-              }),
-            ],
-            spacing: {
-              after: 200, // 10pt spacing after paragraph
-            },
-          });
-        });
-
-      // Create Word document
-      const doc = new Document({
-        sections: [
-          {
-            properties: {},
-            children: paragraphs,
-          },
-        ],
-      });
-
-      // Generate document buffer
-      const buffer = await Packer.toBuffer(doc);
-
-      // Convert buffer to base64 for return
-      const base64 = buffer.toString("base64");
-      const fileName = `${documentTitle || "demand-letter"}-${Date.now()}.docx`;
-
-      logger.info(`Word document created for user ${userId}: ${fileName}`);
-      return {
-        fileData: base64,
-        fileName: fileName,
-        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      };
-    } catch (error) {
-      logger.error("Error exporting to Word:", error);
-      if (error instanceof HttpsError) {
-        throw error;
-      }
-      throw new HttpsError("internal", `Failed to export to Word: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-);

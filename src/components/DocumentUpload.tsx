@@ -81,7 +81,7 @@ export default function DocumentUpload({ onClose }: DocumentUploadProps) {
           // Upload to Storage
           const storageRef = ref(storage, storagePath);
           await uploadBytes(storageRef, file);
-          
+
           // Save metadata to Firestore (NO extracted text)
           const sourceDocRef = await addDoc(collection(db, 'sourceDocuments'), {
             name: file.name,

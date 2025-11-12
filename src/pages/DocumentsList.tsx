@@ -83,7 +83,7 @@ export default function DocumentsList() {
     try {
       // Create empty document
       const docRef = await addDoc(collection(db, 'documents'), {
-        title: 'Untitled Document',
+        title: '',
         content: null,
         format: 'Standard',
         status: 'draft',
@@ -143,9 +143,9 @@ export default function DocumentsList() {
             <button onClick={handleCreateNew} className="create-button">
               + Create New Document
             </button>
-            <button onClick={handleUploadNew} className="upload-button">
+          <button onClick={handleUploadNew} className="upload-button">
               + Upload PDF
-            </button>
+          </button>
           </div>
         </div>
       ) : (

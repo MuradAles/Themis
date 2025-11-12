@@ -11,7 +11,7 @@
 ### Completed
 - ✅ Project initialized with React + TypeScript + Vite template
 - ✅ Firebase project configured (themis-law)
-- ✅ Firebase Functions created (4 functions: generateLetter, refineLetter, chatWithAI, exportToWord)
+- ✅ Firebase Functions created (3 functions: generateLetter, chatWithAI, chatWithAIStream)
 - ✅ Firestore security rules configured
 - ✅ Storage security rules created (not used, but configured)
 - ✅ Frontend dependencies installed
@@ -39,6 +39,16 @@
   - ✅ AI document updates with clean confirmations
   - ✅ Empty message filtering
   - ✅ Document newline cleanup
+- ✅ **PDF Processing Enhancement:** OpenAI Files API Integration
+  - ✅ Replaced pdf-parse with OpenAI Files API for PDF processing
+  - ✅ PDFs uploaded to OpenAI and referenced in chat completions
+  - ✅ Using gpt-4o model for document reading and extraction
+  - ✅ File cleanup after processing (delete from OpenAI)
+- ✅ **Formatting Improvements:** Clean HTML Output
+  - ✅ Removed markdown code blocks from AI output
+  - ✅ Removed explanatory text and comments from documents
+  - ✅ Updated prompts to enforce clean HTML only
+  - ✅ Added cleanup code to strip unwanted content
 - ✅ Memory bank documentation established
 
 ### Next Steps

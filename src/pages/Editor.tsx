@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
 import { Editor as TiptapEditorType } from '@tiptap/react';
 import { saveAs } from 'file-saver';
-import { auth, db, functions } from '../services/firebase';
+import { Document as WordDocument, Packer, Paragraph, TextRun } from 'docx';
+import { auth, db } from '../services/firebase';
 import TiptapEditor from '../components/TiptapEditor';
 import ChatSidebar from '../components/ChatSidebar';
 import './Editor.css';
@@ -97,7 +97,7 @@ export default function Editor() {
       if (document.id === 'new') {
         // Create new document
         const newDoc = {
-          title: document.title || 'Untitled Document',
+          title: document.title || '',
           content,
           format: document.format || 'Standard',
           status: 'draft' as const,
@@ -256,44 +256,220 @@ export default function Editor() {
       // Get the current editor content (HTML from Tiptap)
       const htmlContent = editor.getHTML();
       
-      // Convert HTML to plain text for Word export
-      // Create a temporary div to extract text content
+      // Parse HTML and convert to Word document structure
       const tempDiv = window.document.createElement('div');
       tempDiv.innerHTML = htmlContent;
-      const letterContent = tempDiv.textContent || tempDiv.innerText || '';
       
-      // Call the exportToWord Firebase Function
-      const exportToWord = httpsCallable(functions, 'exportToWord');
-      const result = await exportToWord({
-        letter: letterContent,
-        documentId: document.id !== 'new' ? document.id : undefined,
-        title: document.title || 'Untitled Document',
+      // Debug: Log the HTML structure to understand what we're working with
+      console.log('HTML Content for export:', htmlContent);
+      console.log('Number of <p> tags:', tempDiv.querySelectorAll('p').length);
+      
+      const wordParagraphs: Paragraph[] = [];
+      
+      // Helper function to convert HTML element to Word TextRun with formatting
+      const createTextRuns = (element: HTMLElement): TextRun[] => {
+        const runs: TextRun[] = [];
+        
+        const processNode = (node: Node, isBold: boolean, isItalic: boolean, isUnderline: boolean) => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent || '';
+            if (text.length > 0) {
+              runs.push(new TextRun({
+                text: text,
+                size: 24, // 12pt
+                bold: isBold,
+                italics: isItalic,
+                underline: isUnderline ? {} : undefined,
+              }));
+            }
+          } else if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as HTMLElement;
+            const tagName = el.tagName.toLowerCase();
+            
+            // Update formatting flags (allow multiple formats at once)
+            let newBold = isBold;
+            let newItalic = isItalic;
+            let newUnderline = isUnderline;
+            
+            if (tagName === 'strong' || tagName === 'b') {
+              newBold = true;
+            }
+            if (tagName === 'em' || tagName === 'i') {
+              newItalic = true;
+            }
+            if (tagName === 'u') {
+              newUnderline = true;
+            }
+            
+            // Process all child nodes
+            Array.from(el.childNodes).forEach(child => {
+              processNode(child, newBold, newItalic, newUnderline);
+            });
+          }
+        };
+        
+        // Start processing from the element
+        Array.from(element.childNodes).forEach(child => {
+          processNode(child, false, false, false);
+        });
+        
+        return runs;
+      };
+      
+      // Process all top-level elements
+      const processNode = (node: Node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as HTMLElement;
+          const tagName = element.tagName.toLowerCase();
+          
+          if (tagName === 'p') {
+            // Check if paragraph contains <br> tags - split into multiple paragraphs
+            const brElements = element.querySelectorAll('br');
+            if (brElements.length > 0) {
+              // Split by <br> tags
+              const parts: HTMLElement[] = [];
+              let currentPart = window.document.createElement('span');
+              
+              Array.from(element.childNodes).forEach(node => {
+                if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName.toLowerCase() === 'br') {
+                  // Save current part and start new one
+                  if (currentPart.childNodes.length > 0) {
+                    parts.push(currentPart);
+                  }
+                  currentPart = window.document.createElement('span');
+                } else {
+                  currentPart.appendChild(node.cloneNode(true));
+                }
+              });
+              
+              // Add last part if it has content
+              if (currentPart.childNodes.length > 0) {
+                parts.push(currentPart);
+              }
+              
+              // Create a paragraph for each part (including empty ones to preserve line breaks)
+              parts.forEach((part) => {
+                const textRuns = createTextRuns(part);
+                wordParagraphs.push(new Paragraph({
+                  children: textRuns.length > 0 ? textRuns : [new TextRun({ text: '', size: 24 })],
+                  spacing: {
+                    after: 200,
+                  },
+                }));
+              });
+            } else {
+              // No <br> tags - single paragraph (always create, even if empty)
+              // IMPORTANT: Each <p> tag must create a separate paragraph in Word
+              const textRuns = createTextRuns(element);
+              // Always create a new paragraph for each <p> tag, regardless of content
+              wordParagraphs.push(new Paragraph({
+                children: textRuns.length > 0 ? textRuns : [new TextRun({ text: '', size: 24 })],
+                spacing: {
+                  after: 200, // 10pt spacing after paragraph
+                },
+              }));
+            }
+          } else if (tagName === 'h1' || tagName === 'h2' || tagName === 'h3' || tagName === 'h4' || tagName === 'h5' || tagName === 'h6') {
+            const level = parseInt(tagName.charAt(1));
+            const textRuns = createTextRuns(element);
+            // Always create heading paragraph, even if empty
+            // Make heading text bold and larger
+            for (const run of textRuns) {
+              run.options.bold = true;
+              run.options.size = 24 + (6 - level) * 4; // h1 = 44pt, h2 = 40pt, etc.
+            }
+            wordParagraphs.push(new Paragraph({
+              children: textRuns.length > 0 ? textRuns : [new TextRun({ text: '', size: 24 + (6 - level) * 4, bold: true })],
+              heading: `Heading${level}` as any,
+              spacing: {
+                before: 400,
+                after: 200,
+              },
+            }));
+          } else if (tagName === 'ul' || tagName === 'ol') {
+            const listItems = element.querySelectorAll('li');
+            listItems.forEach((li) => {
+              const textRuns = createTextRuns(li);
+              // Always create list item paragraph, even if empty
+              wordParagraphs.push(new Paragraph({
+                children: textRuns.length > 0 ? textRuns : [new TextRun({ text: '', size: 24 })],
+                bullet: tagName === 'ul' ? { level: 0 } : undefined,
+                numbering: tagName === 'ol' ? { level: 0 } : undefined,
+                spacing: {
+                  after: 100,
+                },
+              }));
+            });
+          } else if (tagName === 'blockquote') {
+            const textRuns = createTextRuns(element);
+            if (textRuns.length > 0) {
+              // Make blockquote italic
+              for (const run of textRuns) {
+                run.options.italics = true;
+              }
+              wordParagraphs.push(new Paragraph({
+                children: textRuns,
+                indent: { left: 400 }, // Indent blockquote
+                spacing: {
+                  after: 200,
+                },
+              }));
+            }
+          } else if (tagName === 'br') {
+            // Line break - add empty paragraph
+            wordParagraphs.push(new Paragraph({
+              children: [new TextRun({ text: '', size: 24 })],
+              spacing: { after: 200 },
+            }));
+          }
+        }
+      };
+      
+      // Process all child nodes of the div
+      // IMPORTANT: Process each node separately to ensure each <p> tag creates a new line
+      // Also process direct <p> elements if they exist (in case HTML structure is different)
+      const directParagraphs = tempDiv.querySelectorAll(':scope > p');
+      if (directParagraphs.length > 0) {
+        // Process each <p> tag directly
+        directParagraphs.forEach((pElement) => {
+          processNode(pElement);
+        });
+      } else {
+        // Fallback: process all child nodes
+        Array.from(tempDiv.childNodes).forEach((node) => {
+          processNode(node);
+        });
+      }
+      
+      // If no paragraphs were created, create one empty paragraph
+      if (wordParagraphs.length === 0) {
+        wordParagraphs.push(new Paragraph({
+          children: [new TextRun({ text: '', size: 24 })],
+        }));
+      }
+
+      // Create Word document
+      const doc = new WordDocument({
+        sections: [
+          {
+            properties: {},
+            children: wordParagraphs,
+          },
+        ],
       });
 
-      const data = result.data as {
-        fileData: string;
-        fileName: string;
-        mimeType: string;
-      };
-
-      // Convert base64 to blob
-      const base64Data = data.fileData;
-      const byteCharacters = atob(base64Data);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: data.mimeType });
-
+      // Generate document blob (for browser)
+      const blob = await Packer.toBlob(doc);
+      const fileName = `${document.title || 'demand-letter'}-${Date.now()}.docx`;
+      
       // Download the file
-      saveAs(blob, data.fileName);
+      saveAs(blob, fileName);
       
       setExporting(false);
     } catch (error) {
       console.error('Error exporting to Word:', error);
       setExporting(false);
-      alert('Failed to export document. Please try again.');
+      alert(`Failed to export document: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -306,7 +482,7 @@ export default function Editor() {
       if (document.id === 'new') {
         // If it's a new document, we need to create it first
         const newDoc = {
-          title: document.title || 'Untitled Document',
+          title: document.title || '',
           content: document.content || '',
           format: document.format || 'Standard',
           status: 'draft' as const,
@@ -462,9 +638,38 @@ export default function Editor() {
           <button onClick={handleBack} className="back-button">
             ← Back
           </button>
-          <h1 className="document-title">
-            {document?.title || 'Untitled Document'}
-          </h1>
+          <input
+            type="text"
+            className="document-title-input"
+            value={document?.title || ''}
+            onChange={(e) => {
+              const newTitle = e.target.value;
+              setDocument({ ...document!, title: newTitle });
+              // Auto-save title
+              if (document && document.id !== 'new' && auth.currentUser) {
+                updateDoc(doc(db, 'documents', document.id), {
+                  title: newTitle,
+                  updatedAt: serverTimestamp(),
+                }).catch((err) => {
+                  console.error('Error saving title:', err);
+                });
+              }
+            }}
+            onBlur={async () => {
+              // Save title when user finishes editing
+              if (document && document.id !== 'new' && auth.currentUser) {
+                try {
+                  await updateDoc(doc(db, 'documents', document.id), {
+                    title: document.title || '',
+                    updatedAt: serverTimestamp(),
+                  });
+                } catch (err) {
+                  console.error('Error saving title:', err);
+                }
+              }
+            }}
+            placeholder="Document title..."
+          />
         </div>
         <div className="header-actions">
           <div className="save-status-container">

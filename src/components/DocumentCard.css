@@ -1,11 +1,14 @@
 .document-card {
   background: white;
   border-radius: 12px;
-  padding: 20px;
+  padding: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   transition: all 0.2s;
   border: 2px solid transparent;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .document-card:hover {
@@ -14,12 +17,96 @@
   border-color: #667eea;
 }
 
+.document-preview {
+  width: 100%;
+  height: 200px;
+  background: #f8f9fa;
+  border-bottom: 2px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.document-preview-content {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  background: white;
+  padding: 12px;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #666;
+}
+
+.document-preview-content p {
+  margin: 0 0 6px 0;
+}
+
+.document-preview-content p:last-child {
+  margin-bottom: 0;
+}
+
+.document-preview-content h1,
+.document-preview-content h2,
+.document-preview-content h3 {
+  margin: 8px 0 6px 0;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.document-preview-content ul,
+.document-preview-content ol {
+  margin: 6px 0;
+  padding-left: 16px;
+}
+
+.document-preview-content li {
+  margin: 2px 0;
+}
+
+.document-preview-empty {
+  width: 100%;
+  height: 200px;
+  background: #f8f9fa;
+  border-bottom: 2px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-empty-text {
+  color: #999;
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.document-preview-loading {
+  width: 100%;
+  height: 200px;
+  background: #f8f9fa;
+  border-bottom: 2px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-loading-text {
+  color: #666;
+  font-size: 0.875rem;
+}
+
 .document-card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 16px;
   gap: 12px;
+  padding: 20px 20px 0 20px;
 }
 
 .document-title {
@@ -59,6 +146,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 0 20px 20px 20px;
 }
 
 .document-meta {

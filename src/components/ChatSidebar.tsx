@@ -281,10 +281,10 @@ export default function ChatSidebar({
         }
       } else {
         // Regular chat with streaming
-        const conversationHistory = messages.map((msg) => ({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          content: msg.content,
-        }));
+      const conversationHistory = messages.map((msg) => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content,
+      }));
 
         // Get auth token for streaming request
         const authToken = await auth.currentUser?.getIdToken();
@@ -317,10 +317,10 @@ export default function ChatSidebar({
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              message: userMessage.content,
-              sourceDocumentIds: sourceDocumentIds.length > 0 ? sourceDocumentIds : undefined,
-              conversationHistory,
-              currentLetter: currentLetter || undefined,
+        message: userMessage.content,
+        sourceDocumentIds: sourceDocumentIds.length > 0 ? sourceDocumentIds : undefined,
+        conversationHistory,
+        currentLetter: currentLetter || undefined,
               authToken,
             }),
           });
@@ -580,13 +580,13 @@ export default function ChatSidebar({
         {messages
           .filter((message) => message.content.trim().length > 0 || message.role === 'user')
           .map((message) => (
-            <ChatMessage
-              key={message.id}
-              message={message.content}
-              role={message.role}
-              timestamp={message.timestamp}
-            />
-          ))}
+          <ChatMessage
+            key={message.id}
+            message={message.content}
+            role={message.role}
+            timestamp={message.timestamp}
+          />
+        ))}
         {isLoading && (
           <div className="chat-loading">
             <div className="loading-dots">

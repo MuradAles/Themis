@@ -103,11 +103,15 @@ Save structured data + text to Firestore
 ```
 User Clicks "Generate" → Firebase Function
     ↓
-Function Reads Structured Data + Text from Firestore → OpenAI API
+Function Downloads PDFs from Firebase Storage → Upload to OpenAI Files API
     ↓
-AI generates letter using structured information
+Function References PDFs in Chat Completion (gpt-4o) → OpenAI API
     ↓
-Generated Letter → Firestore → Editor Display
+AI reads PDFs and extracts information → Generates letter
+    ↓
+Generated Letter (clean HTML) → Firestore → Editor Display
+    ↓
+Cleanup: Delete uploaded files from OpenAI
 ```
 
 #### Save Flow
@@ -224,18 +228,18 @@ DocumentsList.tsx (Page)
 
 #### `generateLetter`
 - **Input:** `{ sourceDocumentIds: string[] }`
-- **Output:** `{ letter: string }`
-- **Process:** Read extracted text from Firestore → Call OpenAI → Return letter (saves to Firestore)
+- **Output:** `{ letter: string }` (clean HTML)
+- **Process:** Download PDFs from Storage → Upload to OpenAI Files API → Reference in gpt-4o chat completion → AI reads PDFs and extracts info → Generate letter → Cleanup files → Return clean HTML
 
 #### `refineLetter`
 - **Input:** `{ letter: string, instruction: string }`
 - **Output:** `{ letter: string }`
 - **Process:** Send to OpenAI with refinement prompt → Return updated letter
 
-#### `chatWithAI`
-- **Input:** `{ message: string, documentIds?: string[] }`
-- **Output:** `{ response: string, updates?: { letter: string } }`
-- **Process:** Chat completion with context → Return response and optional updates
+#### `chatWithAI` & `chatWithAIStream`
+- **Input:** `{ message: string, sourceDocumentIds?: string[], conversationHistory?: array, currentLetter?: string }`
+- **Output:** `{ response: string, letterUpdate?: string }` (or streaming SSE)
+- **Process:** Download PDFs from Storage (if provided) → Upload to OpenAI Files API → Reference in gpt-4o chat completion → AI reads PDFs and responds → Cleanup files → Return response and optional document updates
 
 #### `analyzeDocument`
 - **Input:** `{ fileBuffer: string (base64), fileName: string, mimeType: string }`

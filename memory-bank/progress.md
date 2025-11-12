@@ -18,11 +18,12 @@
 - ✅ OpenAI secret configured
 
 ### Firebase Functions
-- ✅ `generateLetter` function created (reads from Firestore)
-- ✅ `refineLetter` function created
-- ✅ `chatWithAI` function created (reads from Firestore)
-- ✅ `exportToWord` function created (returns base64, no Storage)
-- ✅ All functions use Firestore only (no Storage)
+- ✅ `generateLetter` function created (uses OpenAI Files API for PDF processing)
+- ✅ `chatWithAI` function created (uses OpenAI Files API for PDF processing)
+- ✅ `chatWithAIStream` function created (streaming version with OpenAI Files API)
+- ✅ All functions use OpenAI Files API for PDF reading (gpt-4o model)
+- ✅ File cleanup implemented (delete uploaded files from OpenAI after processing)
+- ✅ Clean HTML output (no markdown code blocks, no explanatory text)
 
 ### Frontend Setup
 - ✅ All dependencies installed (react-router-dom, tiptap, firebase, etc.)
@@ -52,10 +53,11 @@
 - [x] Firebase service integration
 
 ### Phase 2: Firebase Functions (Code Complete, Needs Testing)
-- [x] `generateLetter` function (reads from Firestore)
-- [x] `refineLetter` function
-- [x] `chatWithAI` function (reads from Firestore)
-- [x] `exportToWord` function (returns base64, no Storage)
+- [x] `generateLetter` function (OpenAI Files API for PDF processing)
+- [x] `chatWithAI` function (OpenAI Files API for PDF processing)
+- [x] `chatWithAIStream` function (streaming with OpenAI Files API)
+- [x] PDF processing via OpenAI Files API (upload, reference, cleanup)
+- [x] Clean HTML output (removed markdown and explanatory text)
 - [ ] Test functions (deployment pending)
 
 ### Phase 3: Authentication & Routing (Complete)
@@ -126,7 +128,7 @@
 
 ## Current Status
 
-**Overall Progress:** ~85% (Setup complete, Functions code complete, Authentication & Routing complete, Documents List & Upload complete, Editor & Pagination complete, Chat Sidebar complete)
+**Overall Progress:** ~90% (Setup complete, Functions code complete with OpenAI Files API, Authentication & Routing complete, Documents List & Upload complete, Editor & Pagination complete, Chat Sidebar complete, PDF Processing enhanced, Formatting improved)
 
 **Completed Phases:** 8/11 (Phase 1: Setup, Phase 2: Functions code, Phase 3: Auth & Routing, Phase 4: Documents List, Phase 5: Document Upload, Phase 6: Editor Layout, Phase 7: Tiptap Editor, Phase 8: Chat Sidebar)  
 **In Progress:** Phase 9: Word Export  

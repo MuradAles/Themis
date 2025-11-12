@@ -26,10 +26,11 @@
 
 ### AI Services
 - **OpenAI API** - Text generation, refinement, and document analysis
-  - **GPT-4:** Text generation for letters and chat interactions
-  - **GPT-4 Vision:** Document analysis for scanned PDFs, images, and complex layouts
-  - **Chat Completion:** Interactive refinement and Q&A
-  - **Vision API:** Extracts structured information from document images
+  - **GPT-4o:** Primary model for document reading and letter generation (uses Files API)
+  - **GPT-4o-mini:** Fallback for simple chat without documents
+  - **OpenAI Files API:** Upload PDFs to OpenAI for direct reading by gpt-4o
+  - **Chat Completion:** Interactive refinement and Q&A with document context
+  - **File Processing:** PDFs uploaded with `purpose: 'user_data'` for Chat Completions API
 
 ### Development Tools
 - **ESLint 9.39.1** - Code linting
@@ -203,10 +204,8 @@ firebase deploy --only hosting
 - `firebase-admin` ^12.6.0
 - `firebase-functions` ^6.0.1
 - `openai` ^6.8.1
-- `docx` ^9.5.1
 - `dotenv` ^17.2.3
-- `pdfjs-dist` (for PDF processing, if needed in functions)
-- `canvas` or `sharp` (for image processing, if needed)
+- **Note:** `pdf-parse` removed - using OpenAI Files API instead for PDF processing
 
 ### Development Dependencies
 - `typescript` ~5.9.3
