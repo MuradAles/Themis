@@ -745,7 +745,7 @@ export const chatWithAI = onCall(
   },
   async (request) => {
     try {
-      const {message, sourceDocumentIds, conversationHistory, currentLetter} = request.data;
+      const {message, sourceDocumentIds, conversationHistory, currentLetter, isTemplateMode} = request.data;
 
       if (!message || typeof message !== "string") {
         throw new HttpsError("invalid-argument", "message is required");
@@ -873,33 +873,43 @@ CRITICAL: When the user asks about information or requests changes, you MUST rea
       // Add current letter context if provided
       let updatedLetter = currentLetter || "";
       if (currentLetter) {
+        const isTemplate = (isTemplateMode as boolean) === true;
+        const documentType = isTemplate ? "template" : "document";
+        
         messages.push({
           role: "system",
-          content: `You are working with this document. When the user gives ANY command or instruction, you must actually modify the document content.
+          content: `You are working with an EXISTING ${documentType}. When the user gives ANY command or instruction, you must UPDATE the existing ${documentType} content - DO NOT create a new ${documentType}.
 
-Current document content:
+Current ${documentType} content:
 ${currentLetter}
 
 CRITICAL INSTRUCTIONS:
-1. ALL user commands must result in document changes:
-   - Specific changes: "change phone number to X", "update name to Y", "change date to Z"
+1. You are EDITING an EXISTING ${documentType}, NOT creating a new one.
+2. ALL user commands must result in UPDATING the existing ${documentType}:
+   - When user says "add [something]" or "I want to add [something]": ADD it to the existing ${documentType}, keeping all existing content
+   - When user says "change [something]" or "update [something]": MODIFY the existing content
+   - Specific changes: "change phone number to X", "update name to Y", "change date to Z", "add kids name"
    - Style/tone changes: "make it more formal", "make it casual", "change tone", "change format", "make it professional", "make it friendly"
-   - For style changes: REWRITE the entire document in the requested style while keeping all factual information
-2. DO NOT ask for clarification - interpret the command and execute it
-3. DO NOT say "I'm not sure what you want to change" - just make the change based on your best interpretation
-4. Find the relevant text in the document (look for placeholders like [phone number] or actual existing text)
-5. Replace it with the new information or rewrite in the requested style
-6. You MUST return the COMPLETE updated document in this exact format (this will be extracted automatically, not shown to user):
+   - For style changes: REWRITE the entire ${documentType} in the requested style while keeping all factual information and structure
+   - For additions: ADD the requested elements (like placeholders for kids' names) to the existing ${documentType} structure
+3. DO NOT create a new ${documentType} - always UPDATE the existing one
+4. DO NOT ask for clarification - interpret the command and execute it
+5. DO NOT say "I've created a new ${documentType}" - you are UPDATING the existing one
+6. Find the relevant text in the ${documentType} (look for placeholders like [phone number] or actual existing text)
+7. For additions: Add new placeholders or sections while preserving all existing content
+8. Replace or add content as needed, but always return the COMPLETE updated ${documentType}
+9. You MUST return the COMPLETE updated ${documentType} in this exact format (this will be extracted automatically, not shown to user):
 
 UPDATED_DOCUMENT_START
-[put the complete updated document content here]
+[put the complete updated ${documentType} content here - include ALL existing content plus any additions/changes]
 UPDATED_DOCUMENT_END
 
-7. After the UPDATED_DOCUMENT_END, provide ONLY a simple confirmation message (1 sentence max):
-   - If successful: "I've updated the [thing]." or "I've changed the document to be more [style]."
+10. After the UPDATED_DOCUMENT_END, provide ONLY a simple confirmation message (1 sentence max):
+   - If successful: "I've updated the ${documentType} to add [thing]." or "I've added [thing] to the ${documentType}." or "I've changed the ${documentType} to be more [style]."
+   - NEVER say "I've created" - always say "I've updated" or "I've added"
    - NEVER ask for clarification - always make a change
 
-DO NOT repeat the document content in your confirmation. Keep it short and simple.`,
+DO NOT repeat the ${documentType} content in your confirmation. Keep it short and simple.`,
         });
       }
 
@@ -1081,7 +1091,7 @@ export const chatWithAIStream = onRequest(
     const fileIdToName: Map<string, string> = new Map();
     
     try {
-      const { message, sourceDocumentIds, conversationHistory, currentLetter, authToken } = request.body;
+      const { message, sourceDocumentIds, conversationHistory, currentLetter, authToken, isTemplateMode } = request.body;
 
       if (!message || typeof message !== "string") {
         response.status(400).json({ error: "message is required" });
@@ -1184,33 +1194,43 @@ export const chatWithAIStream = onRequest(
 
       // Add current letter context if provided
       if (currentLetter) {
+        const isTemplate = (isTemplateMode as boolean) === true;
+        const documentType = isTemplate ? "template" : "document";
+        
         messages.push({
           role: "system",
-          content: `You are working with this document. When the user gives ANY command or instruction, you must actually modify the document content.
+          content: `You are working with an EXISTING ${documentType}. When the user gives ANY command or instruction, you must UPDATE the existing ${documentType} content - DO NOT create a new ${documentType}.
 
-Current document content:
+Current ${documentType} content:
 ${currentLetter}
 
 CRITICAL INSTRUCTIONS:
-1. ALL user commands must result in document changes:
-   - Specific changes: "change phone number to X", "update name to Y", "change date to Z"
+1. You are EDITING an EXISTING ${documentType}, NOT creating a new one.
+2. ALL user commands must result in UPDATING the existing ${documentType}:
+   - When user says "add [something]" or "I want to add [something]": ADD it to the existing ${documentType}, keeping all existing content
+   - When user says "change [something]" or "update [something]": MODIFY the existing content
+   - Specific changes: "change phone number to X", "update name to Y", "change date to Z", "add kids name"
    - Style/tone changes: "make it more formal", "make it casual", "change tone", "change format", "make it professional", "make it friendly"
-   - For style changes: REWRITE the entire document in the requested style while keeping all factual information
-2. DO NOT ask for clarification - interpret the command and execute it
-3. DO NOT say "I'm not sure what you want to change" - just make the change based on your best interpretation
-4. Find the relevant text in the document (look for placeholders like [phone number] or actual existing text)
-5. Replace it with the new information or rewrite in the requested style
-6. You MUST return the COMPLETE updated document in this exact format (this will be extracted automatically, not shown to user):
+   - For style changes: REWRITE the entire ${documentType} in the requested style while keeping all factual information and structure
+   - For additions: ADD the requested elements (like placeholders for kids' names) to the existing ${documentType} structure
+3. DO NOT create a new ${documentType} - always UPDATE the existing one
+4. DO NOT ask for clarification - interpret the command and execute it
+5. DO NOT say "I've created a new ${documentType}" - you are UPDATING the existing one
+6. Find the relevant text in the ${documentType} (look for placeholders like [phone number] or actual existing text)
+7. For additions: Add new placeholders or sections while preserving all existing content
+8. Replace or add content as needed, but always return the COMPLETE updated ${documentType}
+9. You MUST return the COMPLETE updated ${documentType} in this exact format (this will be extracted automatically, not shown to user):
 
 UPDATED_DOCUMENT_START
-[put the complete updated document content here]
+[put the complete updated ${documentType} content here - include ALL existing content plus any additions/changes]
 UPDATED_DOCUMENT_END
 
-7. After the UPDATED_DOCUMENT_END, provide ONLY a simple confirmation message (1 sentence max):
-   - If successful: "I've updated the [thing]." or "I've changed the document to be more [style]."
+10. After the UPDATED_DOCUMENT_END, provide ONLY a simple confirmation message (1 sentence max):
+   - If successful: "I've updated the ${documentType} to add [thing]." or "I've added [thing] to the ${documentType}." or "I've changed the ${documentType} to be more [style]."
+   - NEVER say "I've created" - always say "I've updated" or "I've added"
    - NEVER ask for clarification - always make a change
 
-DO NOT repeat the document content in your confirmation. Keep it short and simple.`,
+DO NOT repeat the ${documentType} content in your confirmation. Keep it short and simple.`,
         });
       }
 

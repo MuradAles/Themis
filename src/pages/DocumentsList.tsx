@@ -72,6 +72,14 @@ export default function DocumentsList() {
     };
   }, []);
 
+  const handleCreateNew = () => {
+    navigate('/editor/new');
+  };
+
+  const handleUploadNew = () => {
+    setShowUpload(true);
+  };
+
   if (loading) {
     return (
       <div className="documents-list-container">

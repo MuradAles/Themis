@@ -1,5 +1,4 @@
-import { useState, useRef, DragEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef, type DragEvent } from 'react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
 import { db, auth, storage } from '../services/firebase';
@@ -15,7 +14,6 @@ export default function DocumentUpload({ onClose }: DocumentUploadProps) {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const navigate = useNavigate();
 
   const handleFileSelect = (selectedFiles: FileList | null) => {
     if (!selectedFiles) return;

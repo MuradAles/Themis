@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { collection, query, where, getDocs, addDoc, doc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes } from 'firebase/storage';
 import { auth, db, functions, storage } from '../services/firebase';
 import ChatMessage from './ChatMessage';
 import './ChatSidebar.css';
@@ -40,7 +40,6 @@ export default function ChatSidebar({
   sourceDocumentIds = [],
   onLetterUpdate,
   onDocumentsUpdate,
-  documentId,
   isTemplateMode = false,
 }: ChatSidebarProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -59,12 +58,10 @@ export default function ChatSidebar({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   // Template management state
   const [availableTemplates, setAvailableTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-  const [selectedTemplateName, setSelectedTemplateName] = useState<string>('Default');
   
   // Controls state
   const [showControls, setShowControls] = useState(false);
@@ -172,7 +169,7 @@ export default function ChatSidebar({
       const defaultTemplate = temps.find(t => t.isSystemDefault);
       if (defaultTemplate) {
         setSelectedTemplateId(defaultTemplate.id);
-        setSelectedTemplateName(defaultTemplate.name);
+        // Removed setSelectedTemplateName(defaultTemplate.name);
       }
     } catch (error) {
       console.error('Error loading templates:', error);
@@ -271,21 +268,6 @@ export default function ChatSidebar({
     }
   };
 
-  // Handle drag and drop
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      handleFileUpload(file);
-    }
-  };
-
   // Handle document selection - Auto-apply immediately
   const handleDocumentToggle = (docId: string) => {
     const newIds = selectedDocumentIds.includes(docId)
@@ -296,14 +278,6 @@ export default function ChatSidebar({
     
     // Auto-apply immediately
     if (onDocumentsUpdate) {
-      onDocumentsUpdate(newIds);
-    }
-  };
-
-  // Remove attached document
-  const handleRemoveDocument = (docId: string) => {
-    if (onDocumentsUpdate) {
-      const newIds = sourceDocumentIds.filter((id) => id !== docId);
       onDocumentsUpdate(newIds);
     }
   };
@@ -400,6 +374,7 @@ export default function ChatSidebar({
         sourceDocumentIds: sourceDocumentIds.length > 0 ? sourceDocumentIds : undefined,
         conversationHistory,
         currentLetter: currentLetter || undefined,
+        isTemplateMode: isTemplateMode || false,
               authToken,
             }),
           });
@@ -703,7 +678,7 @@ export default function ChatSidebar({
                               checked={selectedTemplateId === template.id}
                               onChange={() => {
                                 setSelectedTemplateId(template.id);
-                                setSelectedTemplateName(template.name);
+                                // Removed setSelectedTemplateName(template.name);
                                 setShowTemplateSelection(false);
                               }}
                             />

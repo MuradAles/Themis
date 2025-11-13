@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { doc, getDoc, updateDoc, setDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Editor as TiptapEditorType } from '@tiptap/react';
 import { saveAs } from 'file-saver';
 import { Document as WordDocument, Packer, Paragraph, TextRun } from 'docx';
@@ -404,15 +404,27 @@ export default function Editor() {
             }
           } else if (tagName === 'h1' || tagName === 'h2' || tagName === 'h3' || tagName === 'h4' || tagName === 'h5' || tagName === 'h6') {
             const level = parseInt(tagName.charAt(1));
-            const textRuns = createTextRuns(element);
-            // Always create heading paragraph, even if empty
-            // Make heading text bold and larger
-            for (const run of textRuns) {
-              run.options.bold = true;
-              run.options.size = 24 + (6 - level) * 4; // h1 = 44pt, h2 = 40pt, etc.
-            }
+            const headingSize = 24 + (6 - level) * 4; // h1 = 44pt, h2 = 40pt, etc.
+            // Create text runs with heading formatting
+            const headingRuns: TextRun[] = [];
+            const processHeadingNode = (node: Node) => {
+              if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent || '';
+                if (text.length > 0) {
+                  headingRuns.push(new TextRun({
+                    text: text,
+                    size: headingSize,
+                    bold: true,
+                  }));
+                }
+              } else if (node.nodeType === Node.ELEMENT_NODE) {
+                const el = node as HTMLElement;
+                Array.from(el.childNodes).forEach(child => processHeadingNode(child));
+              }
+            };
+            Array.from(element.childNodes).forEach(child => processHeadingNode(child));
             wordParagraphs.push(new Paragraph({
-              children: textRuns.length > 0 ? textRuns : [new TextRun({ text: '', size: 24 + (6 - level) * 4, bold: true })],
+              children: headingRuns.length > 0 ? headingRuns : [new TextRun({ text: '', size: headingSize, bold: true })],
               heading: `Heading${level}` as any,
               spacing: {
                 before: 400,
@@ -427,21 +439,34 @@ export default function Editor() {
               wordParagraphs.push(new Paragraph({
                 children: textRuns.length > 0 ? textRuns : [new TextRun({ text: '', size: 24 })],
                 bullet: tagName === 'ul' ? { level: 0 } : undefined,
-                numbering: tagName === 'ol' ? { level: 0 } : undefined,
+                numbering: tagName === 'ol' ? { reference: 'default-numbering', level: 0 } : undefined,
                 spacing: {
                   after: 100,
                 },
               }));
             });
           } else if (tagName === 'blockquote') {
-            const textRuns = createTextRuns(element);
-            if (textRuns.length > 0) {
-              // Make blockquote italic
-              for (const run of textRuns) {
-                run.options.italics = true;
+            // Create text runs with italic formatting for blockquote
+            const blockquoteRuns: TextRun[] = [];
+            const processBlockquoteNode = (node: Node) => {
+              if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent || '';
+                if (text.length > 0) {
+                  blockquoteRuns.push(new TextRun({
+                    text: text,
+                    size: 24,
+                    italics: true,
+                  }));
+                }
+              } else if (node.nodeType === Node.ELEMENT_NODE) {
+                const el = node as HTMLElement;
+                Array.from(el.childNodes).forEach(child => processBlockquoteNode(child));
               }
+            };
+            Array.from(element.childNodes).forEach(child => processBlockquoteNode(child));
+            if (blockquoteRuns.length > 0) {
               wordParagraphs.push(new Paragraph({
-                children: textRuns,
+                children: blockquoteRuns,
                 indent: { left: 400 }, // Indent blockquote
                 spacing: {
                   after: 200,

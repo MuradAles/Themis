@@ -79,6 +79,14 @@ export default function TemplatesList() {
     };
   }, []);
 
+  const handleCreateNew = () => {
+    navigate('/templates/editor/new');
+  };
+
+  const handleUploadPDF = () => {
+    setShowUpload(true);
+  };
+
   if (loading) {
     return (
       <div className="templates-list-container">
