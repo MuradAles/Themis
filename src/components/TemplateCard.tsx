@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
+import { useEffect, useState } from 'react';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import './TemplateCard.css';
@@ -18,30 +19,55 @@ interface TemplateCardProps {
 
 export default function TemplateCard({ template }: TemplateCardProps) {
   const navigate = useNavigate();
+  const [showMenu, setShowMenu] = useState(false);
 
   const handleClick = () => {
-    navigate(`/templates/editor/${template.id}`);
+    if (!showMenu) {
+      navigate(`/templates/editor/${template.id}`);
+    }
+  };
+
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    setShowMenu(!showMenu);
   };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent card click
+    setShowMenu(false);
 
     if (template.isSystemDefault) {
-      alert('Cannot delete system default template');
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to delete "${template.name}"?`)) {
-      return;
+      return; // Don't delete system default templates
     }
 
     try {
       await deleteDoc(doc(db, 'templates', template.id));
     } catch (error) {
       console.error('Error deleting template:', error);
-      alert('Failed to delete template. Please try again.');
     }
   };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!showMenu) return;
+
+    const doc = window.document;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.template-menu-container')) {
+        setShowMenu(false);
+      }
+    };
+
+    // Use setTimeout to avoid immediate closure when opening menu
+    setTimeout(() => {
+      doc.addEventListener('click', handleClickOutside);
+    }, 0);
+
+    return () => {
+      doc.removeEventListener('click', handleClickOutside);
+    };
+  }, [showMenu]);
 
   // Convert Firestore Timestamp to Date
   const getDate = (timestamp: any) => {
@@ -74,26 +100,45 @@ export default function TemplateCard({ template }: TemplateCardProps) {
         </div>
       )}
       
+      {!template.isSystemDefault && (
+        <div className="template-menu-container">
+          <button 
+            className="template-menu-button"
+            onClick={handleMenuClick}
+            title="Menu"
+          >
+            <span className="menu-dots">⋯</span>
+          </button>
+          {showMenu && (
+            <div className="template-menu-dropdown">
+              <button 
+                className="template-menu-item delete-item"
+                onClick={handleDelete}
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <div className="template-card-header">
-        <h3 className="template-title">{template.name}</h3>
-        {template.isSystemDefault && (
-          <span className="default-badge">Default</span>
-        )}
-      </div>
-      <div className="template-card-body">
-        <div className="template-meta">
-          <span className="template-date">{formattedDate}</span>
+        <div className="template-title-row">
+          <h3 className="template-title">{template.name}</h3>
+          {template.isSystemDefault && (
+            <span className="default-badge">Default</span>
+          )}
           {!template.isSystemDefault && (
-            <button 
-              className="delete-button"
-              onClick={handleDelete}
-              title="Delete template"
-            >
-              🗑️
-            </button>
+            <span className="template-date">{formattedDate}</span>
           )}
         </div>
       </div>
+      {template.isSystemDefault && (
+        <div className="template-card-body">
+          <div className="template-meta">
+            <span className="template-date">{formattedDate}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -14,7 +14,7 @@
 
 /* Paged.js container */
 .pagedjs-content {
-  background: #e5e7eb;
+  background: var(--bg-tertiary);
   padding: 40px 20px;
   min-height: 100vh;
   position: relative;
@@ -47,13 +47,14 @@
 .a4-page-container {
   width: 794px;
   height: 1123px;
-  background: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-xl);
   position: absolute;
   left: 0;
   overflow: hidden; /* Clip editor content at page boundary */
   z-index: 1;
   pointer-events: none; /* Allow clicks through to editor */
+  transition: box-shadow var(--transition-base);
 }
 
 /* Tiptap editor styles */
@@ -61,13 +62,14 @@
   outline: none;
   font-size: 1rem;
   line-height: 1.6;
-  color: #333;
+  color: var(--text-primary);
   padding: 0;
   height: 100%;
   overflow: visible;
   position: relative;
   box-sizing: border-box;
-  caret-color: #333; /* Visible cursor */
+  caret-color: var(--color-primary); /* Visible cursor */
+  transition: color var(--transition-base);
 }
 
 /* Typography */
@@ -77,7 +79,8 @@
   margin-top: 1.5rem;
   margin-bottom: 1rem;
   line-height: 1.2;
-  color: #1a1a1a;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
 }
 
 .tiptap-editor-content .ProseMirror h2 {
@@ -86,7 +89,8 @@
   margin-top: 1.25rem;
   margin-bottom: 0.75rem;
   line-height: 1.3;
-  color: #1a1a1a;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 
 .tiptap-editor-content .ProseMirror h3 {
@@ -94,12 +98,13 @@
   font-weight: 600;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .tiptap-editor-content .ProseMirror p {
   margin-top: 0.75rem;
   margin-bottom: 0.75rem;
+  color: var(--text-primary);
 }
 
 .tiptap-editor-content .ProseMirror p:first-child {
@@ -127,6 +132,7 @@
 
 .tiptap-editor-content .ProseMirror li {
   margin: 0.5rem 0;
+  color: var(--text-primary);
 }
 
 .tiptap-editor-content .ProseMirror li p {
@@ -135,40 +141,50 @@
 
 /* Blockquote */
 .tiptap-editor-content .ProseMirror blockquote {
-  border-left: 4px solid #667eea;
+  border-left: 4px solid var(--color-primary);
   padding-left: 1rem;
   margin: 1rem 0;
-  color: #666;
+  color: var(--text-secondary);
   font-style: italic;
+  background: var(--color-gray-50);
+  padding: 1rem;
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition-base);
+}
+
+.tiptap-editor-content .ProseMirror blockquote:hover {
+  border-left-color: var(--color-primary-hover);
 }
 
 /* Links */
 .tiptap-editor-content .ProseMirror a {
-  color: #667eea;
+  color: var(--color-primary);
   text-decoration: underline;
   cursor: pointer;
+  transition: color var(--transition-base);
 }
 
 .tiptap-editor-content .ProseMirror a:hover {
-  color: #764ba2;
+  color: var(--color-primary-hover);
 }
 
 /* Code */
 .tiptap-editor-content .ProseMirror code {
-  background-color: #f5f5f5;
+  background-color: var(--color-gray-100);
   padding: 0.2rem 0.4rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-family: 'Courier New', monospace;
   font-size: 0.9em;
-  color: #c33;
+  color: var(--color-danger-hover);
 }
 
 .tiptap-editor-content .ProseMirror pre {
-  background-color: #f5f5f5;
+  background-color: var(--color-gray-100);
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow-x: auto;
   margin: 1rem 0;
+  border: 1px solid var(--border-light);
 }
 
 .tiptap-editor-content .ProseMirror pre code {
@@ -181,7 +197,7 @@
 .tiptap-editor-content .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
-  color: #adb5bd;
+  color: var(--text-tertiary);
   pointer-events: none;
   height: 0;
 }
@@ -193,21 +209,24 @@
 
 /* Selection */
 .tiptap-editor-content .ProseMirror ::selection {
-  background-color: #667eea33;
+  background-color: var(--color-primary-light);
+  color: var(--text-primary);
 }
 
 /* Change Tracking Styles */
 .tiptap-editor-content .ProseMirror .insertion {
-  background-color: #dcfce7;
-  border-bottom: 2px solid #22c55e;
+  background-color: var(--color-success-light);
+  border-bottom: 2px solid var(--color-success);
   padding: 2px 0;
+  transition: all var(--transition-fast);
 }
 
 .tiptap-editor-content .ProseMirror .deletion {
-  background-color: #fee2e2;
+  background-color: var(--color-danger-light);
   text-decoration: line-through;
-  color: #991b1b;
+  color: var(--color-danger-hover);
   padding: 2px 0;
+  transition: all var(--transition-fast);
 }
 
 .tiptap-editor-content .ProseMirror .change-marker {
@@ -217,14 +236,19 @@
   border-radius: 50%;
   margin: 0 4px;
   vertical-align: middle;
+  transition: transform var(--transition-fast);
+}
+
+.tiptap-editor-content .ProseMirror .change-marker:hover {
+  transform: scale(1.2);
 }
 
 .tiptap-editor-content .ProseMirror .change-marker.insertion {
-  background-color: #22c55e;
+  background-color: var(--color-success);
 }
 
 .tiptap-editor-content .ProseMirror .change-marker.deletion {
-  background-color: #ef4444;
+  background-color: var(--color-danger);
 }
 
 /* Loading state */
@@ -233,7 +257,8 @@
   align-items: center;
   justify-content: center;
   padding: 40px;
-  color: #999;
+  color: var(--text-tertiary);
+  animation: fadeIn var(--transition-base);
 }
 
 /* Scrollbar styling */
@@ -242,15 +267,16 @@
 }
 
 .tiptap-editor-content::-webkit-scrollbar-track {
-  background: #f5f5f5;
+  background: var(--color-gray-100);
+  border-radius: var(--radius-sm);
 }
 
 .tiptap-editor-content::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 4px;
+  background: var(--color-gray-400);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-base);
 }
 
 .tiptap-editor-content::-webkit-scrollbar-thumb:hover {
-  background: #999;
+  background: var(--color-gray-500);
 }
-

@@ -33,6 +33,7 @@ export default function Editor() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showChat, setShowChat] = useState(false);
+  const [chatClosing, setChatClosing] = useState(false);
   const [showMarginSettings, setShowMarginSettings] = useState(false);
   const [editor, setEditor] = useState<TiptapEditorType | null>(null);
   const [toolbarUpdate, setToolbarUpdate] = useState(0);
@@ -568,7 +569,15 @@ export default function Editor() {
   };
 
   const toggleChat = () => {
-    setShowChat(!showChat);
+    if (showChat) {
+      setChatClosing(true);
+      setTimeout(() => {
+        setShowChat(false);
+        setChatClosing(false);
+      }, 250);
+    } else {
+      setShowChat(true);
+    }
   };
 
   // Toolbar button handlers
@@ -660,12 +669,12 @@ export default function Editor() {
 
   return (
     <div className="editor-container">
-      {/* Header */}
-      <header className="editor-header">
-        <div className="header-left">
-          <button onClick={handleBack} className="back-button">
-            ← Back
-          </button>
+        {/* Header */}
+        <header className="editor-header">
+          <div className="header-left">
+            <button onClick={handleBack} className="back-button">
+              ← Back
+            </button>
           <input
             type="text"
             className="document-title-input"
@@ -920,15 +929,16 @@ export default function Editor() {
           </div>
         </div>
 
-        {/* Chat Sidebar (conditional) */}
+        {/* Chat Sidebar */}
         {showChat && (
-          <div className="chat-sidebar">
+          <div className={`chat-sidebar ${chatClosing ? 'closing' : ''}`}>
             <ChatSidebar
               currentLetter={currentContent}
               sourceDocumentIds={document?.sourceDocumentIds || []}
               onLetterUpdate={handleLetterUpdate}
               onDocumentsUpdate={handleDocumentsUpdate}
               documentId={document?.id}
+              isTemplateMode={isTemplateMode}
             />
           </div>
         )}

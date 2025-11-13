@@ -1,3 +1,6 @@
+@import './styles/design-system.css';
+@import './styles/layout.css';
+
 * {
   box-sizing: border-box;
 }
@@ -9,6 +12,8 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 #root {

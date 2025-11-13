@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, or, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, or, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import TemplateCard from '../components/TemplateCard';
 import TemplateUpload from '../components/TemplateUpload';
@@ -67,62 +67,16 @@ export default function TemplatesList() {
     return () => unsubscribe();
   }, [navigate]);
 
-  const handleUploadPDF = () => {
-    setShowUpload(true);
-  };
+  useEffect(() => {
+    const handleOpenUpload = () => {
+      setShowUpload(true);
+    };
 
-  const handleCreateNew = async () => {
-    if (!auth.currentUser) {
-      navigate('/login');
-      return;
-    }
-
-    try {
-      // Create empty template with default structure
-      const defaultTemplateContent = `<p><strong>[Law Firm Name]</strong></p>
-<p>[Law Firm Address]</p>
-<p>[City, State ZIP]</p>
-<p>[Phone Number]</p>
-<p>[Email]</p>
-
-<p>[Date]</p>
-
-<p><strong>[Recipient Name]</strong></p>
-<p>[Recipient Title]</p>
-<p>[Recipient Company]</p>
-<p>[Recipient Address]</p>
-
-<p>Dear [Recipient Name],</p>
-
-<p>This letter serves as a formal demand regarding [Case Subject].</p>
-
-<p><strong>Facts:</strong></p>
-<p>[Case Facts]</p>
-
-<p><strong>Demand:</strong></p>
-<p>[Demand Details]</p>
-
-<p>Please respond by [Deadline Date].</p>
-
-<p>Sincerely,</p>
-<p>[Attorney Name]</p>`;
-
-      const templateRef = await addDoc(collection(db, 'templates'), {
-        name: 'New Template',
-        content: defaultTemplateContent,
-        isSystemDefault: false,
-        userId: auth.currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      // Navigate to template editor with new template
-      navigate(`/templates/editor/${templateRef.id}`);
-    } catch (error) {
-      console.error('Error creating template:', error);
-      alert('Failed to create template. Please try again.');
-    }
-  };
+    window.addEventListener('openTemplateUpload', handleOpenUpload);
+    return () => {
+      window.removeEventListener('openTemplateUpload', handleOpenUpload);
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -142,20 +96,9 @@ export default function TemplatesList() {
 
   return (
     <div className="templates-list-container">
-      <header className="templates-header">
-        <h1 className="templates-title">My Templates</h1>
-        <div className="header-actions">
-          <button onClick={handleCreateNew} className="create-button">
-            + Create New Template
-          </button>
-          <button onClick={handleUploadPDF} className="upload-button">
-            + Upload PDF
-          </button>
-          <button onClick={() => navigate('/documents')} className="back-button">
-            ← Back to Documents
-          </button>
-        </div>
-      </header>
+        <header className="templates-header">
+          <h1 className="templates-title">My Templates</h1>
+        </header>
 
       {templates.length === 0 ? (
         <div className="empty-state">

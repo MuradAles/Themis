@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import './DocumentCard.css';
 
@@ -21,6 +21,7 @@ export default function DocumentCard({ document }: DocumentCardProps) {
   const navigate = useNavigate();
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   // Load document content for preview
   useEffect(() => {
@@ -53,8 +54,48 @@ export default function DocumentCard({ document }: DocumentCardProps) {
   }, [document.id, document.content]);
 
   const handleClick = () => {
-    navigate(`/editor/${document.id}`);
+    if (!showMenu) {
+      navigate(`/editor/${document.id}`);
+    }
   };
+
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    setShowMenu(!showMenu);
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    setShowMenu(false);
+
+    try {
+      await deleteDoc(doc(db, 'documents', document.id));
+    } catch (error) {
+      console.error('Error deleting document:', error);
+    }
+  };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!showMenu) return;
+
+    const doc = window.document;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.document-menu-container')) {
+        setShowMenu(false);
+      }
+    };
+
+    // Use setTimeout to avoid immediate closure when opening menu
+    setTimeout(() => {
+      doc.addEventListener('click', handleClickOutside);
+    }, 0);
+
+    return () => {
+      doc.removeEventListener('click', handleClickOutside);
+    };
+  }, [showMenu]);
 
   // Convert Firestore Timestamp to Date
   const getDate = (timestamp: any) => {
@@ -69,7 +110,6 @@ export default function DocumentCard({ document }: DocumentCardProps) {
   };
 
   const formattedDate = format(getDate(document.updatedAt || document.createdAt), 'MMM d, yyyy');
-  const statusBadge = document.status === 'completed' ? 'Completed' : 'Draft';
 
   return (
     <div className="document-card" onClick={handleClick}>
@@ -93,13 +133,28 @@ export default function DocumentCard({ document }: DocumentCardProps) {
         </div>
       )}
       
-      <div className="document-card-header">
-        <h3 className="document-title">{document.title || '(No title)'}</h3>
-        <span className={`status-badge status-${document.status}`}>{statusBadge}</span>
+      <div className="document-menu-container">
+        <button 
+          className="document-menu-button"
+          onClick={handleMenuClick}
+          title="Menu"
+        >
+          <span className="menu-dots">⋯</span>
+        </button>
+        {showMenu && (
+          <div className="document-menu-dropdown">
+            <button 
+              className="document-menu-item delete-item"
+              onClick={handleDelete}
+            >
+              Delete
+            </button>
+          </div>
+        )}
       </div>
-      <div className="document-card-body">
-        <div className="document-meta">
-          <span className="document-format">{document.format || 'Standard'}</span>
+      <div className="document-card-header">
+        <div className="document-title-row">
+          <h3 className="document-title">{document.title || '(No title)'}</h3>
           <span className="document-date">{formattedDate}</span>
         </div>
       </div>

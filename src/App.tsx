@@ -4,6 +4,7 @@ import DocumentsList from './pages/DocumentsList';
 import TemplatesList from './pages/TemplatesList';
 import Editor from './pages/Editor';
 import ProtectedRoute from './components/ProtectedRoute';
+import Layout from './components/Layout';
 import './App.css';
 
 function App() {
@@ -15,7 +16,9 @@ function App() {
           path="/documents"
           element={
             <ProtectedRoute>
-              <DocumentsList />
+              <Layout>
+                <DocumentsList />
+              </Layout>
             </ProtectedRoute>
           }
         />
@@ -23,7 +26,9 @@ function App() {
           path="/templates"
           element={
             <ProtectedRoute>
-              <TemplatesList />
+              <Layout>
+                <TemplatesList />
+              </Layout>
             </ProtectedRoute>
           }
         />

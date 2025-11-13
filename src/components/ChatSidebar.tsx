@@ -32,6 +32,7 @@ interface ChatSidebarProps {
   onLetterUpdate?: (updatedLetter: string) => void;
   onDocumentsUpdate?: (documentIds: string[]) => void;
   documentId?: string;
+  isTemplateMode?: boolean;
 }
 
 export default function ChatSidebar({
@@ -40,6 +41,7 @@ export default function ChatSidebar({
   onLetterUpdate,
   onDocumentsUpdate,
   documentId,
+  isTemplateMode = false,
 }: ChatSidebarProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -63,6 +65,11 @@ export default function ChatSidebar({
   const [availableTemplates, setAvailableTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [selectedTemplateName, setSelectedTemplateName] = useState<string>('Default');
+  
+  // Controls state
+  const [showControls, setShowControls] = useState(false);
+  const [activeTab, setActiveTab] = useState<'documents' | 'template'>('documents');
+  const [showTemplateSelection, setShowTemplateSelection] = useState(false);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -279,23 +286,18 @@ export default function ChatSidebar({
     }
   };
 
-  // Handle document selection
+  // Handle document selection - Auto-apply immediately
   const handleDocumentToggle = (docId: string) => {
-    setSelectedDocumentIds((prev) => {
-      if (prev.includes(docId)) {
-        return prev.filter((id) => id !== docId);
-      } else {
-        return [...prev, docId];
-      }
-    });
-  };
-
-  // Apply selected documents
-  const handleApplySelection = () => {
+    const newIds = selectedDocumentIds.includes(docId)
+      ? selectedDocumentIds.filter((id) => id !== docId)
+      : [...selectedDocumentIds, docId];
+    
+    setSelectedDocumentIds(newIds);
+    
+    // Auto-apply immediately
     if (onDocumentsUpdate) {
-      onDocumentsUpdate(selectedDocumentIds);
+      onDocumentsUpdate(newIds);
     }
-    setShowDocumentSelection(false);
   };
 
   // Remove attached document
@@ -546,131 +548,192 @@ export default function ChatSidebar({
 
   return (
     <div className="chat-sidebar-container">
-      <div className="chat-header">
-        <h3>AI Assistant</h3>
-        <p className="chat-subtitle">Ask questions or request changes to your letter</p>
-      </div>
-
-      {/* Template Selection Section */}
-      <div className="template-selection-section">
-        <label className="template-label">
-          📋 Template:
-          <select 
-            className="template-selector"
-            value={selectedTemplateId}
-            onChange={(e) => {
-              const templateId = e.target.value;
-              const template = availableTemplates.find(t => t.id === templateId);
-              setSelectedTemplateId(templateId);
-              setSelectedTemplateName(template?.name || 'Default');
-            }}
-          >
-            {availableTemplates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name} {template.isSystemDefault ? '(Default)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {/* Document Management Section */}
-      <div className="document-management-section">
-        {/* Select Documents Button */}
-        <button
-          className="select-documents-button"
-          onClick={() => setShowDocumentSelection(!showDocumentSelection)}
-        >
-          {showDocumentSelection ? '▼' : '▶'} Select Documents
-        </button>
-
-        {/* Document Selection Panel */}
-        {showDocumentSelection && (
-          <div className="document-selection-panel">
-            {/* Upload Area */}
-            <div
-              ref={dropZoneRef}
-              className="upload-area"
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
+      <div className="chat-content-wrapper">
+        {/* Compact Toggle Button */}
+        {!isTemplateMode && (
+          <div className="chat-controls-toggle">
+            <button
+              className="controls-toggle-button"
+              onClick={() => setShowControls(!showControls)}
             >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf"
-                onChange={handleFileInputChange}
-                style={{ display: 'none' }}
-              />
-              {uploading ? (
-                <div className="upload-progress">
-                  <div className="progress-bar">
-                    <div
-                      className="progress-fill"
-                      style={{ width: `${uploadProgress}%` }}
-                    ></div>
+              {showControls ? '▼ Hide' : '▶'} Documents & Template
+              {sourceDocumentIds.length > 0 && ` (${sourceDocumentIds.length})`}
+            </button>
+          </div>
+        )}
+
+        {/* Controls Section - Collapsible */}
+        {!isTemplateMode && (
+          <div className={`chat-controls-section ${showControls ? 'open' : ''}`}>
+            {/* Tabs */}
+            <div className="chat-tabs">
+              <button
+                className={`chat-tab ${activeTab === 'documents' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('documents');
+                  setShowDocumentSelection(false);
+                }}
+              >
+                📎 Documents {sourceDocumentIds.length > 0 && `(${sourceDocumentIds.length})`}
+              </button>
+              <button
+                className={`chat-tab ${activeTab === 'template' ? 'active' : ''}`}
+                onClick={() => setActiveTab('template')}
+              >
+                📋 Template
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <div className="chat-tab-content">
+              {/* Documents Tab */}
+              {activeTab === 'documents' && (
+                <div className="tab-panel">
+                  {/* Show simple indicator - just one document name */}
+                  {!showDocumentSelection && attachedDocuments.length > 0 && (
+                    <div className="attached-document-indicator">
+                      <span className="indicator-label">Attached:</span>
+                      <span className="indicator-name">{attachedDocuments[0].name}</span>
+                      {attachedDocuments.length > 1 && (
+                        <span className="indicator-count"> +{attachedDocuments.length - 1}</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Document Actions */}
+                  <div className="document-actions">
+                    <button
+                      className="document-action-button primary"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      📤 Upload PDF
+                    </button>
+                    <button
+                      className="document-action-button"
+                      onClick={() => setShowDocumentSelection(!showDocumentSelection)}
+                    >
+                      {showDocumentSelection ? '▼ Close Selection' : '▶ Select Documents'}
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleFileInputChange}
+                      style={{ display: 'none' }}
+                    />
+                    {uploading && (
+                      <div className="upload-progress">
+                        <div className="progress-bar">
+                          <div
+                            className="progress-fill"
+                            style={{ width: `${uploadProgress}%` }}
+                          ></div>
+                        </div>
+                        <p>Uploading... {uploadProgress}%</p>
+                      </div>
+                    )}
                   </div>
-                  <p>Uploading... {uploadProgress}%</p>
+
+                  {/* Document Selection List - Auto-apply on click with smooth animation */}
+                  <div className={`document-selection-wrapper ${showDocumentSelection ? 'open' : 'closed'}`}>
+                    <div className="available-documents">
+                      <h4>Your Documents:</h4>
+                      {availableDocuments.length > 0 ? (
+                        availableDocuments.map((doc) => (
+                          <label 
+                            key={doc.id} 
+                            className={`document-checkbox ${selectedDocumentIds.includes(doc.id) ? 'selected' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedDocumentIds.includes(doc.id)}
+                              onChange={() => handleDocumentToggle(doc.id)}
+                            />
+                            <span>{doc.name}</span>
+                          </label>
+                        ))
+                      ) : (
+                        <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: '12px 0', fontStyle: 'italic' }}>
+                          No documents available. Upload a PDF first.
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <>
-                  <p>📄 Drag & drop PDF here or</p>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="upload-button"
-                  >
-                    Browse Files
-                  </button>
-                </>
+              )}
+
+              {/* Template Tab */}
+              {activeTab === 'template' && (
+                <div className="tab-panel">
+                  {/* Show simple indicator - just template name (same as documents) */}
+                  {!showTemplateSelection && selectedTemplateId && (
+                    <div className="attached-document-indicator">
+                      <span className="indicator-label">Selected:</span>
+                      <span className="indicator-name">
+                        {availableTemplates.find(t => t.id === selectedTemplateId)?.name || 'Default'}
+                        {availableTemplates.find(t => t.id === selectedTemplateId)?.isSystemDefault && ' (Default)'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Template Actions - Same as documents */}
+                  <div className="document-actions">
+                    <button
+                      className="document-action-button"
+                      onClick={() => setShowTemplateSelection(!showTemplateSelection)}
+                    >
+                      {showTemplateSelection ? '▼ Close Selection' : '▶ Select Template'}
+                    </button>
+                  </div>
+
+                  {/* Template Selection List - Auto-apply on click with smooth animation (same as documents) */}
+                  <div className={`document-selection-wrapper ${showTemplateSelection ? 'open' : 'closed'}`}>
+                    <div className="available-documents">
+                      <h4>Available Templates:</h4>
+                      {availableTemplates.length > 0 ? (
+                        availableTemplates.map((template) => (
+                          <label 
+                            key={template.id} 
+                            className={`document-checkbox ${selectedTemplateId === template.id ? 'selected' : ''}`}
+                          >
+                            <input
+                              type="radio"
+                              name="template"
+                              checked={selectedTemplateId === template.id}
+                              onChange={() => {
+                                setSelectedTemplateId(template.id);
+                                setSelectedTemplateName(template.name);
+                                setShowTemplateSelection(false);
+                              }}
+                            />
+                            <span>
+                              {template.name} {template.isSystemDefault && <span style={{ color: '#6b7280', fontWeight: '400' }}>(Default)</span>}
+                            </span>
+                          </label>
+                        ))
+                      ) : (
+                        <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: '12px 0', fontStyle: 'italic' }}>
+                          No templates available.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
-
-            {/* Available Documents List */}
-            {availableDocuments.length > 0 && (
-              <div className="available-documents">
-                <h4>Your Documents:</h4>
-                {availableDocuments.map((doc) => (
-                  <label key={doc.id} className="document-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={selectedDocumentIds.includes(doc.id)}
-                      onChange={() => handleDocumentToggle(doc.id)}
-                    />
-                    <span>{doc.name}</span>
-                  </label>
-                ))}
-                <button
-                  className="apply-selection-button"
-                  onClick={handleApplySelection}
-                >
-                  Apply Selection ({selectedDocumentIds.length} selected)
-                </button>
-              </div>
-            )}
           </div>
         )}
 
-        {/* Attached Documents Display */}
-        {sourceDocumentIds.length > 0 && (
-          <div className="attached-documents">
-            <h4>📎 Attached Documents ({sourceDocumentIds.length})</h4>
-            <div className="attached-docs-list">
-              {attachedDocuments.map((doc) => (
-                <div key={doc.id} className="attached-doc-item">
-                  <span>{doc.name}</span>
-                  <button
-                    onClick={() => handleRemoveDocument(doc.id)}
-                    className="remove-doc-button"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
+        {/* Template Mode Message */}
+        {isTemplateMode && (
+          <div className="template-mode-message">
+            <p>You're editing a template. Use the chat to refine the template content.</p>
           </div>
         )}
-      </div>
 
-      <div className="chat-messages">
+        {/* Messages Area - Scrollable */}
+        <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty-state">
             <p>Start a conversation with the AI assistant.</p>
@@ -696,9 +759,11 @@ export default function ChatSidebar({
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
+      {/* Input Area - Fixed at Bottom */}
       <div className="chat-input-container">
         <div className="chat-input-wrapper">
           <textarea

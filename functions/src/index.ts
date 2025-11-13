@@ -1313,16 +1313,16 @@ DO NOT repeat the document content in your confirmation. Keep it short and simpl
             }
 
             // Add PDFs to user message
-            if (fileIds.length > 0) {
-              const documentList = fileIds.map((fileId, index) => {
-                const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
-                return `Document ${index + 1}: "${docName}" (file_id: ${fileId})`;
-              }).join('\n');
-              
-              const userContent: any[] = [
-                {
-                  type: "text",
-                  text: `${message}
+      if (fileIds.length > 0) {
+        const documentList = fileIds.map((fileId, index) => {
+          const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
+          return `Document ${index + 1}: "${docName}" (file_id: ${fileId})`;
+        }).join('\n');
+        
+        const userContent: any[] = [
+          {
+            type: "text",
+            text: `${message}
 
 IMPORTANT: You have ${fileIds.length} PDF document(s) attached. You MUST read these PDF files to extract information before responding.
 
@@ -1330,23 +1330,23 @@ Attached documents:
 ${documentList}
 
 CRITICAL: Read the attached PDF files to extract the actual information. Use real data from the documents, not placeholders.`,
-                },
-              ];
+          },
+        ];
               
               // Add file references
-              for (const fileId of fileIds) {
-                userContent.push({
-                  type: "file",
-                  file: {
-                    file_id: fileId,
-                  },
-                });
-              }
+        for (const fileId of fileIds) {
+          userContent.push({
+            type: "file",
+            file: {
+              file_id: fileId,
+            },
+          });
+        }
 
               // Replace last user message with one that includes PDFs
               messages[messages.length - 1] = {
-                role: "user",
-                content: userContent,
+          role: "user",
+          content: userContent,
               };
             }
           }

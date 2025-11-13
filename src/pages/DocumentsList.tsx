@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import DocumentCard from '../components/DocumentCard';
 import DocumentUpload from '../components/DocumentUpload';
@@ -61,45 +60,17 @@ export default function DocumentsList() {
     return () => unsubscribe();
   }, [navigate]);
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      navigate('/login');
-    } catch (err) {
-      console.error('Error signing out:', err);
-    }
-  };
 
-  const handleUploadNew = () => {
-    setShowUpload(true);
-  };
+  useEffect(() => {
+    const handleOpenUpload = () => {
+      setShowUpload(true);
+    };
 
-  const handleCreateNew = async () => {
-    if (!auth.currentUser) {
-      navigate('/login');
-      return;
-    }
-
-    try {
-      // Create empty document
-      const docRef = await addDoc(collection(db, 'documents'), {
-        title: '',
-        content: null,
-        format: 'Standard',
-        status: 'draft',
-        userId: auth.currentUser.uid,
-        sourceDocumentIds: [],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      // Navigate to editor with new document
-      navigate(`/editor/${docRef.id}`);
-    } catch (error) {
-      console.error('Error creating document:', error);
-      alert('Failed to create document. Please try again.');
-    }
-  };
+    window.addEventListener('openDocumentUpload', handleOpenUpload);
+    return () => {
+      window.removeEventListener('openDocumentUpload', handleOpenUpload);
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -119,23 +90,9 @@ export default function DocumentsList() {
 
   return (
     <div className="documents-list-container">
-      <header className="documents-header">
-        <h1 className="documents-title">My Documents</h1>
-        <div className="header-actions">
-          <button onClick={handleCreateNew} className="create-button">
-            + Create New
-          </button>
-          <button onClick={handleUploadNew} className="upload-button">
-            + Upload PDF
-          </button>
-          <button onClick={() => navigate('/templates')} className="templates-button">
-            📋 Templates
-          </button>
-          <button onClick={handleLogout} className="logout-button">
-            Logout
-          </button>
-        </div>
-      </header>
+        <header className="documents-header">
+          <h1 className="documents-title">My Documents</h1>
+        </header>
 
       {documents.length === 0 ? (
         <div className="empty-state">

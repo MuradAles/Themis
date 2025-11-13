@@ -1,0 +1,63 @@
+/* Layout for pages with sidebar */
+.page-with-sidebar {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Content area adjusts based on sidebar */
+.page-with-sidebar > *:not(.sidebar) {
+  flex: 1;
+  margin-left: 0;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  max-width: 100%;
+  will-change: margin-left;
+}
+
+/* Desktop: Add margin when sidebar is open */
+@media (min-width: 768px) {
+  .page-with-sidebar .sidebar.open:not(.collapsed) ~ * {
+    margin-left: 280px;
+  }
+  
+  .page-with-sidebar .sidebar.open.collapsed ~ * {
+    margin-left: 80px;
+  }
+  
+  .page-with-sidebar .sidebar:not(.open) ~ * {
+    margin-left: 0;
+  }
+}
+
+/* Mobile: No margin, sidebar overlays */
+@media (max-width: 767px) {
+  .page-with-sidebar > *:not(.sidebar) {
+    margin-left: 0;
+  }
+}
+
+/* Adjust containers to work with sidebar */
+.documents-list-container,
+.templates-list-container {
+  width: 100%;
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.editor-container {
+  width: 100%;
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth page transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+

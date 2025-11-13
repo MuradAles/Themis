@@ -1,32 +1,52 @@
 .template-card {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: all var(--transition-base);
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;
+  border: 1px solid var(--border-light);
+}
+
+.template-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--color-primary);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--transition-base);
+}
+
+.template-card:hover::before {
+  transform: scaleX(1);
 }
 
 .template-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-primary);
 }
 
 .template-preview {
   height: 200px;
   overflow: hidden;
-  background: #fafafa;
-  border-bottom: 1px solid #e0e0e0;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-light);
   position: relative;
 }
 
 .template-preview-content {
-  padding: 16px;
+  padding: var(--spacing-md);
   font-size: 0.75rem;
   line-height: 1.4;
-  color: #666;
+  color: var(--text-secondary);
   pointer-events: none;
   overflow: hidden;
   max-height: 200px;
@@ -40,7 +60,7 @@
   left: 0;
   right: 0;
   height: 40px;
-  background: linear-gradient(to bottom, transparent, #fafafa);
+  background: linear-gradient(to bottom, transparent, var(--bg-tertiary));
 }
 
 .template-preview-empty,
@@ -49,28 +69,39 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
-  border-bottom: 1px solid #e0e0e0;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-light);
 }
 
 .preview-empty-text,
 .preview-loading-text {
-  color: #999;
+  color: var(--text-tertiary);
   font-size: 0.9rem;
 }
 
+.template-menu-container {
+  position: absolute;
+  top: var(--spacing-md);
+  right: var(--spacing-md);
+  z-index: 10;
+}
+
 .template-card-header {
-  padding: 16px;
+  padding: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+}
+
+.template-title-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: var(--spacing-md);
 }
 
 .template-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -79,46 +110,119 @@
 }
 
 .default-badge {
-  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+  background: linear-gradient(135deg, var(--color-warning) 0%, var(--color-warning-hover) 100%);
   color: white;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-full);
   font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
+  transition: transform var(--transition-fast);
+  box-shadow: var(--shadow-xs);
+}
+
+.template-card:hover .default-badge {
+  transform: scale(1.05);
 }
 
 .template-card-body {
-  padding: 0 16px 16px 16px;
+  padding: 0 var(--spacing-md) var(--spacing-md) var(--spacing-md);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .template-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
+  width: 100%;
 }
 
 .template-date {
-  font-size: 0.9rem;
-  color: #666;
+  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.delete-button {
+.template-menu-button {
   background: transparent;
   border: none;
-  font-size: 1.2rem;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-base);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  position: relative;
 }
 
-.delete-button:hover {
-  background-color: #fee;
+.template-menu-button:hover {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
-.delete-button:active {
-  background-color: #fcc;
+.template-menu-button:active {
+  background-color: var(--bg-tertiary);
 }
 
+.template-menu-button:active .menu-dots {
+  transform: rotate(90deg) scale(0.95);
+}
+
+.menu-dots {
+  font-size: 1.5rem;
+  line-height: 1;
+  font-weight: bold;
+  letter-spacing: -2px;
+  transform: rotate(90deg);
+  display: inline-block;
+}
+
+.template-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.template-menu-item {
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  transition: background-color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.template-menu-item:hover {
+  background-color: var(--bg-secondary);
+}
+
+.template-menu-item.delete-item {
+  color: var(--color-danger);
+}
+
+.template-menu-item.delete-item:hover {
+  background-color: var(--color-danger-light);
+  color: var(--color-danger-hover);
+}
