@@ -208,28 +208,39 @@ DocumentsList.tsx (Page)
 {
   id: string;
   name: string;
-  extractedText: string;  // Extracted text from PDF/Word (NOT file URL)
-  structuredData?: {      // Optional structured information from AI Vision
-    parties?: string[];   // Names of parties involved
-    dates?: string[];     // Important dates
-    amounts?: number[];   // Monetary amounts
-    caseDetails?: string; // Case-specific information
-    summary?: string;     // AI-generated summary
-    [key: string]: any;   // Additional extracted fields
-  };
-  extractionMethod: "text" | "ai-vision";  // How text was extracted
+  storagePath: string;    // Path in Firebase Storage: "documents/{userId}/{docId}.pdf"
   uploadedAt: Timestamp;
-  documentId: string;     // Parent document reference
+  fileSize: number;
+  mimeType: string;      // "application/pdf"
   userId: string;
+  // Note: NO extractedText field - AI reads PDFs directly from Storage via OpenAI Files API
+}
+```
+
+#### `templates` Collection (Template System)
+```typescript
+{
+  id: string;
+  name: string;                // Template name
+  content: string;              // HTML with placeholders (e.g., [client name], [date])
+  isSystemDefault: boolean;     // true for default template
+  userId: string;               // "system" for default, user ID for custom
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 ```
 
 ### Firebase Functions
 
-#### `generateLetter`
-- **Input:** `{ sourceDocumentIds: string[] }`
+#### `generateLetter` (Updated with Template Support)
+- **Input:** `{ sourceDocumentIds: string[], templateId?: string, currentLetter?: string }`
 - **Output:** `{ letter: string }` (clean HTML)
-- **Process:** Download PDFs from Storage → Upload to OpenAI Files API → Reference in gpt-4o chat completion → AI reads PDFs and extracts info → Generate letter → Cleanup files → Return clean HTML
+- **Process:** 
+  - Load template from Firestore if `templateId` provided (or use system default)
+  - Download PDFs from Storage → Upload to OpenAI Files API → Reference in gpt-4o chat completion
+  - AI reads PDFs and extracts info → Uses template structure → Fills template with extracted data
+  - If `currentLetter` provided, intelligently merges existing content with new data
+  - Generate letter → Cleanup files → Return clean HTML
 
 #### `refineLetter`
 - **Input:** `{ letter: string, instruction: string }`
@@ -239,17 +250,26 @@ DocumentsList.tsx (Page)
 #### `chatWithAI` & `chatWithAIStream`
 - **Input:** `{ message: string, sourceDocumentIds?: string[], conversationHistory?: array, currentLetter?: string }`
 - **Output:** `{ response: string, letterUpdate?: string }` (or streaming SSE)
-- **Process:** Download PDFs from Storage (if provided) → Upload to OpenAI Files API → Reference in gpt-4o chat completion → AI reads PDFs and responds → Cleanup files → Return response and optional document updates
+- **Process:** 
+  - **Smart PDF Processing:** AI uses function calling to decide when to read PDFs
+  - If AI calls `read_pdfs` tool → Download PDFs from Storage → Upload to OpenAI Files API → Reference in gpt-4o chat completion
+  - If simple edit (no tool call) → Skip PDF processing for fast response
+  - AI reads PDFs and responds → Cleanup files → Return response and optional document updates
 
 #### `analyzeDocument`
 - **Input:** `{ fileBuffer: string (base64), fileName: string, mimeType: string }`
 - **Output:** `{ extractedText: string, structuredData: object, extractionMethod: "ai-vision" }`
 - **Process:** Convert PDF pages to images → Send to OpenAI Vision API → Extract structured information → Return text + structured data
 
-#### `exportToWord`
+#### `exportToWord` (Firebase Function - exists but not used)
 - **Input:** `{ letter?: string, documentId?: string, title?: string }`
 - **Output:** `{ fileData: string (base64), fileName: string, mimeType: string }`
 - **Process:** Read letter from Firestore (if documentId) → Convert to .docx → Return base64 buffer (NO Storage)
+
+#### `analyzeTemplateFromPDF` (Template System)
+- **Input:** `{ filePath: string }` (Firebase Storage path)
+- **Output:** `{ templateHTML: string }`
+- **Process:** Download PDF from Storage → Upload to OpenAI Files API → AI analyzes structure → Generate HTML template with placeholders → Cleanup files → Return template HTML
 
 ## Key Patterns
 
@@ -280,9 +300,10 @@ DocumentsList.tsx (Page)
 
 ### Firebase Services
 - **Auth:** User authentication and session management
-- **Firestore:** Extracted text and letter content storage with real-time sync
+- **Firestore:** Document content, templates, and metadata storage with real-time sync
+- **Storage:** Used for PDF file storage (temporary, for OpenAI processing)
 - **Functions:** Serverless backend operations
-- **Note:** Storage is NOT used. All data stored in Firestore.
+- **Note:** PDFs stored in Storage temporarily, then processed via OpenAI Files API. Final content stored in Firestore.
 
 ### External APIs
 - **OpenAI:** AI-powered text generation and refinement

@@ -1,0 +1,200 @@
+.template-upload-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.template-upload-modal {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.template-upload-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.template-upload-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.close-button:hover {
+  background-color: #f0f0f0;
+}
+
+.template-upload-body {
+  padding: 24px;
+}
+
+.drop-zone {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background-color: #fafafa;
+}
+
+.drop-zone:hover {
+  border-color: #999;
+  background-color: #f5f5f5;
+}
+
+.drop-zone.dragging {
+  border-color: #667eea;
+  background-color: #f0f4ff;
+}
+
+.drop-zone.has-file {
+  border-color: #48bb78;
+  background-color: #f0fff4;
+}
+
+.drop-zone-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+
+.drop-zone-text {
+  font-size: 1.1rem;
+  color: #333;
+  margin: 0 0 8px 0;
+  font-weight: 500;
+}
+
+.drop-zone-subtext {
+  font-size: 0.9rem;
+  color: #666;
+  margin: 0;
+}
+
+.error-message {
+  background-color: #fee;
+  border: 1px solid #fcc;
+  color: #c33;
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: 16px;
+  font-size: 0.9rem;
+}
+
+.progress-container {
+  margin-top: 20px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  margin-top: 8px;
+  text-align: center;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.template-upload-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 24px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.cancel-button {
+  background: white;
+  border: 2px solid #e0e0e0;
+  color: #666;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-button:hover:not(:disabled) {
+  border-color: #ccc;
+  background-color: #f9f9f9;
+}
+
+.cancel-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.upload-submit-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.upload-submit-button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.upload-submit-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+

@@ -38,5 +38,30 @@ service cloud.firestore {
       // Allow list queries - individual reads are still protected by allow read above
       allow list: if request.auth != null;
     }
+    
+    // Templates collection - users can access their own templates and system default templates
+    match /templates/{templateId} {
+      // Allow read if user owns the template OR it's a system default
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || resource.data.isSystemDefault == true);
+      
+      // Allow update if user owns the template AND it's not a system default
+      allow update: if request.auth != null && 
+        request.auth.uid == resource.data.userId && 
+        resource.data.isSystemDefault == false;
+      
+      // Allow delete if user owns the template AND it's not a system default
+      allow delete: if request.auth != null && 
+        request.auth.uid == resource.data.userId && 
+        resource.data.isSystemDefault == false;
+      
+      // Allow create if user sets their own userId and not system default
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.userId &&
+        request.resource.data.isSystemDefault == false;
+      
+      // Allow list queries
+      allow list: if request.auth != null;
+    }
   }
 }

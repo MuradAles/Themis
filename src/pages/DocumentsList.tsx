@@ -128,6 +128,9 @@ export default function DocumentsList() {
           <button onClick={handleUploadNew} className="upload-button">
             + Upload PDF
           </button>
+          <button onClick={() => navigate('/templates')} className="templates-button">
+            📋 Templates
+          </button>
           <button onClick={handleLogout} className="logout-button">
             Logout
           </button>

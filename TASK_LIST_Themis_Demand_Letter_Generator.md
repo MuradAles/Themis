@@ -621,11 +621,11 @@ documents/
 ---
 
 ### Task 9.2: Export Function Testing
-- [ ] Test export with simple letter
-- [ ] Test export with formatted text
-- [ ] Test export with multiple pages
-- [ ] Verify Word file opens correctly
-- [ ] Fix any formatting issues
+- [x] Test export with simple letter
+- [x] Test export with formatted text
+- [x] Test export with multiple pages
+- [x] Verify Word file opens correctly
+- [x] Fix any formatting issues
 
 **Files Modified:**
 - `functions/src/index.ts` (exportToWord function)
@@ -719,6 +719,110 @@ documents/
 
 ---
 
+## Phase 12: Templates System (2 hours)
+
+### Task 12.1: Default Template Setup
+- [ ] Create `templates` collection in Firestore
+- [ ] Create system default template document (always available as fallback)
+- [ ] Define default template structure/content
+- [ ] Mark default template as `isSystemDefault: true` (cannot be deleted)
+- [ ] Add template data model to TypeScript interfaces
+
+**Template Structure:**
+```typescript
+{
+  id: string;
+  name: string;
+  content?: string; // Template structure/content
+  sourceType: "pdf" | "document" | "system";
+  sourceDocumentId?: string;
+  pdfStoragePath?: string;
+  pdfAnalysis?: object;
+  userId: string; // "system" for default template
+  isDefault: boolean;
+  isSystemDefault: boolean; // Cannot be deleted
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+
+**Files Created:**
+- Firestore `templates` collection
+
+**Files Modified:**
+- TypeScript interfaces/types (add Template interface)
+
+---
+
+### Task 12.2: Template Selection UI in Chat
+- [ ] Add template display in Chat Sidebar
+- [ ] Show current template: "Template: Default"
+- [ ] Add "Change Template" button (placeholder for future)
+- [ ] Style template selector UI
+- [ ] Ensure default template is always visible/available
+
+**Files Modified:**
+- `src/components/ChatSidebar.tsx`
+- `src/components/ChatSidebar.css`
+
+---
+
+### Task 12.3: Update generateLetter Function
+- [ ] Add `templateId` parameter to `generateLetter` function (optional)
+- [ ] Load template from Firestore (default if not provided)
+- [ ] Add fallback logic: if template not found → use default template
+- [ ] Pass template structure to AI with instruction to follow template format
+- [ ] Update AI prompt to include template structure/style
+- [ ] Handle errors gracefully (always fallback to default)
+
+**AI Instruction:**
+```
+"Generate a demand letter following the EXACT same structure, 
+format, and style as the provided template, but using the 
+actual data extracted from the source documents."
+```
+
+**Files Modified:**
+- `functions/src/index.ts` (update `generateLetter` function)
+
+---
+
+### Task 12.4: Frontend Template Integration
+- [ ] Update Chat Sidebar to pass template ID when generating
+- [ ] Default to system default template if none selected
+- [ ] Store selected template ID in component state
+- [ ] Update generation call to include template parameter
+
+**Files Modified:**
+- `src/components/ChatSidebar.tsx`
+
+---
+
+### Task 12.5: Default Template Testing
+- [ ] Test generation with default template
+- [ ] Verify AI follows template structure
+- [ ] Test fallback when template not found
+- [ ] Verify default template is always available
+- [ ] Test error handling
+
+**Files Modified:**
+- `functions/src/index.ts`
+- `src/components/ChatSidebar.tsx`
+
+---
+
+### Task 12.6: Future Template Features (Not Started)
+- [ ] Template management page
+- [ ] Upload PDF as template
+- [ ] Use existing document as template
+- [ ] Multiple template selection
+- [ ] Template CRUD operations
+- [ ] Template preview
+
+**Note:** These features will be implemented in future phases.
+
+---
+
 ## File Checklist
 
 ### Firebase
@@ -766,7 +870,8 @@ documents/
 | Phase 9: Export | 2 tasks | 1 hour |
 | Phase 10: Polish | 4 tasks | 2 hours |
 | Phase 11: Deploy | 2 tasks | 1 hour |
-| **TOTAL** | **31 tasks** | **19.5 hours** |
+| Phase 12: Templates | 5 tasks | 2 hours |
+| **TOTAL** | **36 tasks** | **21.5 hours** |
 
 **Realistic estimate: 12-15 hours** (with experience)
 

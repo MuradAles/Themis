@@ -47,7 +47,7 @@ export const generateLetter = onCall(
   },
   async (request) => {
     try {
-      const {sourceDocumentIds} = request.data;
+      const {sourceDocumentIds, templateId, currentLetter} = request.data;
 
       if (!sourceDocumentIds || !Array.isArray(sourceDocumentIds) || sourceDocumentIds.length === 0) {
         throw new HttpsError("invalid-argument", "sourceDocumentIds array is required");
@@ -58,7 +58,7 @@ export const generateLetter = onCall(
       }
 
       const userId = request.auth.uid;
-      logger.info(`Generating letter for user ${userId} with ${sourceDocumentIds.length} source documents`);
+      logger.info(`Generating letter for user ${userId} with ${sourceDocumentIds.length} source documents${templateId ? ` using template ${templateId}` : ''}${currentLetter ? ' (with existing content)' : ''}`);
 
       // Get document metadata and download PDFs from Storage
       const pdfFiles: Array<{name: string; data: Buffer}> = [];
@@ -151,18 +151,47 @@ export const generateLetter = onCall(
       
       logger.info(`Successfully uploaded ${fileIds.length} files: ${fileIds.join(', ')}`);
 
+      // Load template if templateId is provided
+      let templateHTML = '';
+      if (templateId) {
+        try {
+          const templateRef = db.collection("templates").doc(templateId);
+          const templateSnap = await templateRef.get();
+          
+          if (templateSnap.exists) {
+            const templateData = templateSnap.data();
+            templateHTML = templateData?.content || '';
+            logger.info(`Loaded template ${templateId}: ${templateData?.name}`);
+          } else {
+            logger.warn(`Template ${templateId} not found, using default structure`);
+          }
+        } catch (error) {
+          logger.error(`Error loading template ${templateId}:`, error);
+          logger.warn("Continuing with default structure");
+        }
+      }
+
       // Build document list with names for the prompt
       const documentList = fileIds.map((fileId, index) => {
         const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
         return `Document ${index + 1} (file_id: ${fileId}): "${docName}"`;
       }).join('\n');
 
-      // Build message content with file references
-      // For gpt-4o with files, we use the content array with file references
-      const userContent: any[] = [
-        {
-          type: "text",
-          text: `Please generate a demand letter based on the attached source documents.
+      // Build prompt based on whether template is provided
+      let promptText = '';
+      
+      if (templateHTML) {
+        // Use template-based prompt
+        const currentLetterSection = currentLetter ? `
+
+EXISTING DOCUMENT CONTENT:
+The user already has content in their document. Review it below:
+
+${currentLetter}
+
+IMPORTANT: Use this existing content as a reference. Keep good information that's already there, update outdated information with data from the PDFs, and fill in missing sections using the template structure.` : '';
+
+        promptText = `Please generate a demand letter based on the attached source documents using the provided template structure.${currentLetterSection}
 
 STEP-BY-STEP PROCESS:
 
@@ -185,14 +214,80 @@ For each PDF document, extract ALL of the following information that is explicit
 - Case numbers, reference numbers, invoice numbers
 - Any other factual information relevant to the demand letter
 
-STEP 3: USE EXTRACTED INFORMATION TO FILL THE LETTER
-- Fill the demand letter with ACTUAL data extracted from the PDFs
+STEP 3: USE THE TEMPLATE STRUCTURE
+Below is the template structure to follow. It contains placeholders in brackets like [Field Name]:
+
+${templateHTML}
+
+STEP 4: ${currentLetter ? 'MERGE EXISTING CONTENT WITH NEW DATA' : 'FILL THE TEMPLATE WITH EXTRACTED DATA'}
+${currentLetter ? `- Review the existing document content above
+- Keep well-written sections that are still accurate
+- Update any outdated information with data from the PDFs
+- Add missing sections based on the template
+- Fill any remaining placeholders with extracted data
+- Maintain consistency in tone and style` : `- Replace placeholders with ACTUAL data extracted from the PDFs
+- Use real names, dates, amounts, addresses from the documents
+- Maintain the template's structure and formatting
+- If a placeholder's information is NOT in the PDFs, keep the placeholder as-is
+- DO NOT create a generic template - use actual extracted information`}
+
+FORMATTING REQUIREMENTS:
+- Output ONLY clean HTML format (use <p>, <strong>, <em>, <u> tags)
+- Follow the template's structure exactly
+- DO NOT use markdown syntax (no **, __, ---, #, code blocks, etc.)
+- DO NOT wrap content in code blocks (no markdown code fences)
+- DO NOT add comments, instructions, or notes in the document
+- DO NOT add explanatory text like "This draft uses..." or "Let me know if..."
+- Start directly with the HTML content, no code blocks, no explanations
+
+Generate a professional demand letter using the template structure${currentLetter ? ', existing content,' : ''} and the ACTUAL information extracted from the attached PDF documents.`;
+      } else {
+        // Use default prompt (original)
+        const currentLetterSection = currentLetter ? `
+
+EXISTING DOCUMENT CONTENT:
+The user already has content in their document. Review it below:
+
+${currentLetter}
+
+IMPORTANT: Use this existing content as a reference. Keep good information that's already there, update outdated information with data from the PDFs, and enhance or complete any missing sections.` : '';
+
+        promptText = `Please generate a demand letter based on the attached source documents.${currentLetterSection}
+
+STEP-BY-STEP PROCESS:
+
+STEP 1: READ THE ATTACHED PDF FILES
+You have ${fileIds.length} PDF document(s) attached. You MUST read each PDF file completely before generating the letter.
+
+Attached documents:
+${documentList}
+
+STEP 2: EXTRACT INFORMATION FROM EACH PDF
+For each PDF document, extract ALL of the following information that is explicitly stated:
+- Client/Plaintiff names (tenant, employee, customer, etc.)
+- Recipient/Defendant names (landlord, employer, company, etc.)
+- Law firm names (if mentioned)
+- Dates (incident date, move-out date, invoice date, deadline, etc.)
+- Addresses (property address, mailing address, business address, etc.)
+- Amounts (security deposit, unpaid wages, invoice amount, damages, etc.)
+- Phone numbers
+- Email addresses
+- Case numbers, reference numbers, invoice numbers
+- Any other factual information relevant to the demand letter
+
+STEP 3: ${currentLetter ? 'MERGE EXISTING CONTENT WITH NEW DATA' : 'USE EXTRACTED INFORMATION TO FILL THE LETTER'}
+${currentLetter ? `- Review the existing document content above
+- Keep well-written sections that are still accurate
+- Update any outdated information with data from the PDFs
+- Add missing sections or information
+- Enhance the letter with additional details from the PDFs
+- Maintain consistency in tone and style` : `- Fill the demand letter with ACTUAL data extracted from the PDFs
 - Use real names, dates, amounts, addresses from the documents
 - DO NOT create a generic template - use the actual extracted information
-- DO NOT use placeholders like "[Put client name here]" - use the actual names from the documents
+- DO NOT use placeholders like "[Put client name here]" - use the actual names from the documents`}
 
 STEP 4: USE PLACEHOLDERS ONLY FOR MISSING INFORMATION
-Only use simple bracket placeholders for information that is TRULY NOT in any of the documents:
+Only use simple bracket placeholders for information that is TRULY NOT in any of the documents${currentLetter ? ' and not in the existing content' : ''}:
 - [client name] - only if no client name found in any document
 - [date] - only if no relevant dates found
 - [recipient name] - only if no recipient name found
@@ -203,7 +298,7 @@ Only use simple bracket placeholders for information that is TRULY NOT in any of
 - [law firm name] - only if no law firm name found
 - [case number] - only if no case numbers found
 
-CRITICAL: DO NOT create a generic template. Extract real information from the PDFs and use it in the letter. Only use placeholders for information that is genuinely missing.
+CRITICAL: ${currentLetter ? 'Merge existing content with new data intelligently. Keep good information, update outdated information, and fill in gaps.' : 'DO NOT create a generic template. Extract real information from the PDFs and use it in the letter. Only use placeholders for information that is genuinely missing.'}
 
 FORMATTING REQUIREMENTS:
 - Output ONLY clean HTML format (use <p>, <strong>, <em>, <u> tags)
@@ -218,7 +313,14 @@ FORMATTING REQUIREMENTS:
 - The document should contain ONLY the actual letter content, nothing else
 - Start directly with the HTML content, no code blocks, no explanations
 
-Generate a professional, well-structured demand letter using the ACTUAL information extracted from the attached PDF documents. Output clean HTML with NO markdown, NO code blocks, NO comments, NO instructions, NO explanatory text.`,
+Generate a professional, well-structured demand letter using the ACTUAL information extracted from the attached PDF documents. Output clean HTML with NO markdown, NO code blocks, NO comments, NO instructions, NO explanatory text.`;
+      }
+
+      // Build message content with file references
+      const userContent: any[] = [
+        {
+          type: "text",
+          text: promptText,
         },
       ];
 
@@ -340,6 +442,226 @@ Generate a professional, well-structured demand letter using the ACTUAL informat
         throw error;
       }
       throw new HttpsError("internal", `Failed to generate letter: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+/**
+ * Analyze Template From PDF Function
+ * Analyzes a PDF file and extracts its visual structure/style to create a template
+ */
+export const analyzeTemplateFromPDF = onCall(
+  {
+    secrets: [openaiApiKey],
+    timeoutSeconds: 300,
+    memory: "512MiB",
+  },
+  async (request) => {
+    try {
+      const {storagePath, fileName} = request.data;
+
+      if (!storagePath || typeof storagePath !== "string") {
+        throw new HttpsError("invalid-argument", "storagePath is required");
+      }
+
+      if (!request.auth) {
+        throw new HttpsError("unauthenticated", "Authentication required");
+      }
+
+      const userId = request.auth.uid;
+      logger.info(`Analyzing template PDF for user ${userId}: ${fileName}`);
+
+      // Download PDF from Storage
+      let pdfBuffer: Buffer;
+      try {
+        const bucket = storage.bucket();
+        const file = bucket.file(storagePath);
+        const [fileBuffer] = await file.download();
+        pdfBuffer = fileBuffer;
+        logger.info(`Downloaded PDF: ${fileName} (${fileBuffer.length} bytes)`);
+      } catch (error) {
+        logger.error(`Failed to download PDF ${storagePath}:`, error);
+        throw new HttpsError("internal", `Failed to download PDF: ${fileName}`);
+      }
+
+      // Upload PDF to OpenAI Files API
+      const openai = getOpenAIClient();
+      let fileId: string;
+
+      try {
+        // Create a proper Readable stream from Buffer
+        const fileStream = new Readable();
+        fileStream.push(pdfBuffer);
+        fileStream.push(null); // End the stream
+        
+        // Create a File-like object that OpenAI SDK expects
+        const pdfFileName = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+        const fileLike = Object.assign(fileStream, {
+          name: pdfFileName,
+          type: 'application/pdf',
+        }) as any;
+        
+        // Upload file to OpenAI
+        const fileResponse = await openai.files.create({
+          file: fileLike,
+          purpose: 'user_data',
+        });
+
+        fileId = fileResponse.id;
+        logger.info(`Uploaded PDF to OpenAI: ${pdfFileName} (file_id: ${fileId})`);
+        
+        // Wait for file to be processed
+        let fileReady = false;
+        let attempts = 0;
+        while (!fileReady && attempts < 10) {
+          const fileStatus = await openai.files.retrieve(fileId);
+          logger.info(`File ${fileId} status: ${fileStatus.status}`);
+          if (fileStatus.status === 'processed') {
+            fileReady = true;
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            attempts++;
+          }
+        }
+        
+        if (!fileReady) {
+          logger.warn(`File ${fileId} not processed after 10 attempts`);
+        }
+      } catch (error) {
+        logger.error(`Failed to upload PDF to OpenAI:`, error);
+        throw new HttpsError("internal", `Failed to upload PDF to OpenAI`);
+      }
+
+      // Analyze PDF structure with AI
+      try {
+        const userContent: any[] = [
+          {
+            type: "text",
+            text: `Analyze this demand letter PDF and extract its visual structure and style to create an HTML template.
+
+INSTRUCTIONS:
+1. READ the attached PDF document completely
+2. ANALYZE the structure, formatting, and style:
+   - Header format (law firm info, addresses, contact details)
+   - Date placement
+   - Recipient address format
+   - Salutation style
+   - Body structure (introduction, facts, demand, closing)
+   - Section headings and formatting
+   - Paragraph spacing and indentation
+   - Font styles (bold, italic, underline usage)
+   - Any special formatting or layout patterns
+
+3. GENERATE an HTML template that captures this structure with PLACEHOLDERS:
+   - Use bracket notation for variable content: [Law Firm Name], [Client Name], [Date], etc.
+   - Preserve the visual layout and formatting style
+   - Use HTML tags: <p>, <strong>, <em>, <u>, <br>
+   - Maintain spacing and structure from the original
+
+4. COMMON PLACEHOLDERS to include where appropriate:
+   - [Law Firm Name]
+   - [Law Firm Address]
+   - [City, State ZIP]
+   - [Phone Number]
+   - [Email]
+   - [Date]
+   - [Recipient Name]
+   - [Recipient Title]
+   - [Recipient Company]
+   - [Recipient Address]
+   - [Case Subject]
+   - [Case Facts]
+   - [Demand Details]
+   - [Amount]
+   - [Deadline Date]
+   - [Attorney Name]
+
+5. OUTPUT REQUIREMENTS:
+   - Output ONLY clean HTML (no markdown, no code blocks, no explanations)
+   - Use <p> tags for paragraphs, <strong> for bold, <em> for italic, <u> for underline
+   - Start directly with the HTML content
+   - NO code fences (no \`\`\`), NO comments, NO instructions
+   - The HTML should be ready to use as-is in a template
+
+Generate the HTML template now:`,
+          },
+          {
+            type: "file",
+            file: {
+              file_id: fileId,
+            },
+          },
+        ];
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert at analyzing document structure and creating HTML templates. 
+              You extract the visual layout, formatting style, and structure from documents and convert them into clean HTML templates with placeholders.
+              
+              CRITICAL RULES:
+              1. Output ONLY clean HTML with placeholders
+              2. NO markdown syntax, NO code blocks, NO explanations
+              3. Use <p>, <strong>, <em>, <u> tags only
+              4. Preserve the document's structure and formatting style
+              5. Use bracket notation for placeholders: [Field Name]
+              6. Start directly with HTML content, nothing else`,
+            },
+            {
+              role: "user",
+              content: userContent,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 2000,
+        });
+
+        let templateHTML = completion.choices[0]?.message?.content || "";
+
+        if (!templateHTML) {
+          throw new HttpsError("internal", "Failed to generate template from OpenAI");
+        }
+
+        // Clean up the response: remove code blocks if any
+        templateHTML = templateHTML.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim();
+
+        // Clean up uploaded file from OpenAI
+        try {
+          await openai.files.delete(fileId);
+          logger.info(`Deleted file from OpenAI: ${fileId}`);
+        } catch (error) {
+          logger.warn(`Failed to delete file ${fileId} from OpenAI:`, error);
+        }
+
+        // Delete PDF from Storage (no longer needed)
+        try {
+          const bucket = storage.bucket();
+          const file = bucket.file(storagePath);
+          await file.delete();
+          logger.info(`Deleted PDF from Storage: ${storagePath}`);
+        } catch (error) {
+          logger.warn(`Failed to delete PDF from Storage:`, error);
+        }
+
+        logger.info(`Successfully generated template for user ${userId}`);
+        return {templateHTML};
+      } catch (error) {
+        // Clean up file from OpenAI on error
+        try {
+          await openai.files.delete(fileId);
+        } catch (cleanupError) {
+          logger.warn(`Failed to cleanup file ${fileId}:`, cleanupError);
+        }
+        throw error;
+      }
+    } catch (error) {
+      logger.error("Error analyzing template:", error);
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+      throw new HttpsError("internal", `Failed to analyze template: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 );
@@ -756,6 +1078,7 @@ export const chatWithAIStream = onRequest(
     // Declare variables outside try block so they're accessible in catch
     const openai = getOpenAIClient();
     const fileIds: string[] = [];
+    const fileIdToName: Map<string, string> = new Map();
     
     try {
       const { message, sourceDocumentIds, conversationHistory, currentLetter, authToken } = request.body;
@@ -783,69 +1106,35 @@ export const chatWithAIStream = onRequest(
 
       logger.info(`Streaming chat request from user ${userId}`);
 
-      // Download PDFs from Storage and upload to OpenAI if documents are provided
-      const fileIdToName: Map<string, string> = new Map();
-      
-      if (sourceDocumentIds && Array.isArray(sourceDocumentIds) && sourceDocumentIds.length > 0) {
-        for (const docId of sourceDocumentIds) {
-          try {
-            const docRef = db.collection("sourceDocuments").doc(docId);
-        const docSnap = await docRef.get();
+      // Store sourceDocumentIds for potential use by tools (don't process yet)
+      const availableSourceDocumentIds = sourceDocumentIds && Array.isArray(sourceDocumentIds) ? sourceDocumentIds : [];
 
-            if (docSnap.exists) {
-              const docData = docSnap.data();
-              if (docData?.storagePath) {
-                const documentName = docData.name || docId;
-                
-                // Download PDF from Storage
-                const bucket = storage.bucket();
-                const file = bucket.file(docData.storagePath);
-                const [fileBuffer] = await file.download();
+      // Build document context - but don't upload PDFs yet, let AI decide
+      let documentContext = "";
+      if (availableSourceDocumentIds.length > 0) {
+        documentContext = `\n\nYou have access to ${availableSourceDocumentIds.length} source document(s) that can be read if needed. Use the read_pdfs tool when you need information from these documents.`;
+      }
 
-                // Create a proper Readable stream from Buffer
-                const fileStream = new Readable();
-                fileStream.push(fileBuffer);
-                fileStream.push(null); // End the stream
-                
-                // Create a File-like object that OpenAI SDK expects
-                const fileName = documentName.endsWith('.pdf') ? documentName : `${documentName}.pdf`;
-                const fileLike = Object.assign(fileStream, {
-                  name: fileName,
-                  type: 'application/pdf',
-                }) as any;
-                
-                // Upload to OpenAI Files API
-                const fileResponse = await openai.files.create({
-                  file: fileLike,
-                  purpose: 'user_data', // Required for Chat Completions API
-                });
-
-                fileIds.push(fileResponse.id);
-                fileIdToName.set(fileResponse.id, documentName);
-                logger.info(`Uploaded document ${documentName} to OpenAI (file_id: ${fileResponse.id})`);
-              }
+      // Define tools for AI to decide when to read PDFs
+      const tools: OpenAI.Chat.Completions.ChatCompletionTool[] | undefined = availableSourceDocumentIds.length > 0 ? [
+        {
+          type: "function",
+          function: {
+            name: "read_pdfs",
+            description: "Read PDF documents to extract information. Use this when the user asks about information from documents, needs data extracted, wants to generate a letter from PDFs, or asks questions about document content. DO NOT use this for simple edits like 'change date', 'make it formal', 'update name' - those don't need PDF reading.",
+            parameters: {
+              type: "object",
+              properties: {
+                reason: {
+                  type: "string",
+                  description: "Why you need to read the PDFs (e.g., 'user asked about information in documents', 'need to extract data for letter generation', 'user asked what the PDF says')"
+                }
+              },
+              required: ["reason"]
             }
-          } catch (error) {
-            logger.warn(`Failed to process document ${docId}:`, error);
           }
         }
-      }
-
-      // Build document context message with names
-      let documentContext = "";
-      if (fileIds.length > 0) {
-        const documentList = fileIds.map((fileId, index) => {
-          const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
-          return `Document ${index + 1}: "${docName}" (file_id: ${fileId})`;
-        }).join('\n');
-        
-        documentContext = `\n\nYou have access to ${fileIds.length} source document(s) that have been uploaded. You MUST read these PDF files to extract information.
-
-Attached documents:
-${documentList}
-
-CRITICAL: When the user asks about information or requests changes, you MUST read the attached PDF documents first to extract the actual information. Use real data from the documents, not placeholders.`;
-      }
+      ] : undefined;
 
       // Build conversation messages
       const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -925,54 +1214,150 @@ DO NOT repeat the document content in your confirmation. Keep it short and simpl
         });
       }
 
-      // Build user message with file references if available
-      if (fileIds.length > 0) {
-        const documentList = fileIds.map((fileId, index) => {
-          const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
-          return `Document ${index + 1}: "${docName}" (file_id: ${fileId})`;
-        }).join('\n');
-        
-        const userContent: any[] = [
-          {
-            type: "text",
-            text: `${message}
-
-IMPORTANT: You have ${fileIds.length} PDF document(s) attached. You MUST read these PDF files to extract information before responding.
-
-Attached documents:
-${documentList}
-
-CRITICAL: If the user's message requires information from the documents, you MUST read the attached PDF files first to extract the actual information. Use real data from the documents, not placeholders.`,
-          },
-        ];
-        // Add file references - use nested format: file: { file_id: ... }
-        for (const fileId of fileIds) {
-          userContent.push({
-            type: "file",
-            file: {
-              file_id: fileId,
-            },
-          });
-        }
-        messages.push({
-          role: "user",
-          content: userContent,
-        });
-      } else {
-        messages.push({
-          role: "user",
-          content: message,
-        });
-      }
+      // Add user message (without PDFs initially - AI will decide if needed)
+      messages.push({
+        role: "user",
+        content: message,
+      });
 
       // Set up Server-Sent Events
       response.setHeader('Content-Type', 'text/event-stream');
       response.setHeader('Cache-Control', 'no-cache');
       response.setHeader('Connection', 'keep-alive');
 
-      // Call OpenAI with streaming
+      // Update system message to include tool decision instructions
+      if (messages[0]?.role === "system" && typeof messages[0].content === "string") {
+        messages[0].content = messages[0].content.replace(
+          "CRITICAL RULES:\n          1. You ONLY work on the document.",
+          "CRITICAL RULES:\n          1. You ONLY work on the document.\n          2. DECIDE WHEN TO READ PDFs (if read_pdfs tool is available):\n             - Use read_pdfs tool ONLY when you need information from documents:\n               * User asks \"what does the PDF say\", \"extract information\", \"generate letter\", \"create letter\", \"read the document\"\n               * User asks about specific information that might be in PDFs\n               * User wants to generate a new letter from source documents\n             - DO NOT use read_pdfs for simple edits:\n               * \"change date\", \"update name\", \"make it formal\", \"change tone\", \"fix typo\"\n               * These edits work with the current document content only"
+        );
+        // Renumber remaining rules
+        messages[0].content = messages[0].content.replace(
+          "          2. When the user gives",
+          "          3. When the user gives"
+        );
+        messages[0].content = messages[0].content.replace(
+          "          3. When the user asks",
+          "          4. When the user asks"
+        );
+        messages[0].content = messages[0].content.replace(
+          "          4. For \"create doc\"",
+          "          5. For \"create doc\""
+        );
+      }
+
+      // First, check if AI wants to use tools (non-streaming call)
+      let needsPDFs = false;
+      if (availableSourceDocumentIds.length > 0 && tools) {
+        try {
+          const toolCheck = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages,
+            tools: tools,
+            tool_choice: "auto",
+            temperature: 0.7,
+            max_tokens: 50, // Just enough to see if tool is called
+          });
+
+          const toolCalls = toolCheck.choices[0]?.message?.tool_calls;
+          if (toolCalls && 
+              toolCalls.length > 0 &&
+              toolCalls[0].type === 'function' &&
+              'function' in toolCalls[0] &&
+              toolCalls[0].function.name === 'read_pdfs') {
+            needsPDFs = true;
+            logger.info("AI decided to read PDFs - processing documents");
+            
+            // Download PDFs from Storage and upload to OpenAI
+            for (const docId of availableSourceDocumentIds) {
+              try {
+                const docRef = db.collection("sourceDocuments").doc(docId);
+                const docSnap = await docRef.get();
+
+                if (docSnap.exists) {
+                  const docData = docSnap.data();
+                  if (docData?.storagePath) {
+                    const documentName = docData.name || docId;
+                    
+                    // Download PDF from Storage
+                    const bucket = storage.bucket();
+                    const file = bucket.file(docData.storagePath);
+                    const [fileBuffer] = await file.download();
+
+                    // Create a proper Readable stream from Buffer
+                    const fileStream = new Readable();
+                    fileStream.push(fileBuffer);
+                    fileStream.push(null);
+                    
+                    // Create a File-like object
+                    const fileName = documentName.endsWith('.pdf') ? documentName : `${documentName}.pdf`;
+                    const fileLike = Object.assign(fileStream, {
+                      name: fileName,
+                      type: 'application/pdf',
+                    }) as any;
+                    
+                    // Upload to OpenAI Files API
+                    const fileResponse = await openai.files.create({
+                      file: fileLike,
+                      purpose: 'user_data',
+                    });
+
+                    fileIds.push(fileResponse.id);
+                    fileIdToName.set(fileResponse.id, documentName);
+                    logger.info(`Uploaded document ${documentName} to OpenAI (file_id: ${fileResponse.id})`);
+                  }
+                }
+              } catch (error) {
+                logger.warn(`Failed to process document ${docId}:`, error);
+              }
+            }
+
+            // Add PDFs to user message
+            if (fileIds.length > 0) {
+              const documentList = fileIds.map((fileId, index) => {
+                const docName = fileIdToName.get(fileId) || `Document ${index + 1}`;
+                return `Document ${index + 1}: "${docName}" (file_id: ${fileId})`;
+              }).join('\n');
+              
+              const userContent: any[] = [
+                {
+                  type: "text",
+                  text: `${message}
+
+IMPORTANT: You have ${fileIds.length} PDF document(s) attached. You MUST read these PDF files to extract information before responding.
+
+Attached documents:
+${documentList}
+
+CRITICAL: Read the attached PDF files to extract the actual information. Use real data from the documents, not placeholders.`,
+                },
+              ];
+              
+              // Add file references
+              for (const fileId of fileIds) {
+                userContent.push({
+                  type: "file",
+                  file: {
+                    file_id: fileId,
+                  },
+                });
+              }
+
+              // Replace last user message with one that includes PDFs
+              messages[messages.length - 1] = {
+                role: "user",
+                content: userContent,
+              };
+            }
+          }
+        } catch (error) {
+          logger.warn("Error checking for tool usage, proceeding without PDFs:", error);
+        }
+      }
+
+      // Now stream the actual response
       const stream = await openai.chat.completions.create({
-        model: fileIds.length > 0 ? "gpt-4o" : "gpt-4o-mini",
+        model: needsPDFs ? "gpt-4o" : "gpt-4o-mini",
         messages,
         temperature: 0.7,
         max_tokens: 2000,

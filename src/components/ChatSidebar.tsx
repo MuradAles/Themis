@@ -19,6 +19,13 @@ interface SourceDocument {
   uploadedAt: any;
 }
 
+interface Template {
+  id: string;
+  name: string;
+  content: string;
+  isSystemDefault: boolean;
+}
+
 interface ChatSidebarProps {
   currentLetter?: string;
   sourceDocumentIds?: string[];
@@ -52,6 +59,11 @@ export default function ChatSidebar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
+  // Template management state
+  const [availableTemplates, setAvailableTemplates] = useState<Template[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string>('Default');
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -72,6 +84,11 @@ export default function ChatSidebar({
       setAttachedDocuments([]);
     }
   }, [sourceDocumentIds]);
+
+  // Load available templates on mount
+  useEffect(() => {
+    loadAvailableTemplates();
+  }, []);
 
   // Load names of attached documents
   const loadAttachedDocuments = async () => {
@@ -94,6 +111,64 @@ export default function ChatSidebar({
       setAttachedDocuments(docs);
     } catch (error) {
       console.error('Error loading attached documents:', error);
+    }
+  };
+
+  // Load available templates
+  const loadAvailableTemplates = async () => {
+    if (!auth.currentUser) return;
+    
+    try {
+      const q = query(
+        collection(db, 'templates'),
+        where('userId', '==', auth.currentUser.uid)
+      );
+      const querySnapshot = await getDocs(q);
+      const temps: Template[] = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        temps.push({
+          id: doc.id,
+          name: data.name || doc.id,
+          content: data.content || '',
+          isSystemDefault: data.isSystemDefault || false,
+        });
+      });
+      
+      // Load system default template as well
+      const systemQuery = query(
+        collection(db, 'templates'),
+        where('isSystemDefault', '==', true)
+      );
+      const systemSnapshot = await getDocs(systemQuery);
+      systemSnapshot.forEach((doc) => {
+        const data = doc.data();
+        temps.push({
+          id: doc.id,
+          name: data.name || 'Default',
+          content: data.content || '',
+          isSystemDefault: true,
+        });
+      });
+
+      // Sort: system default first, then user templates
+      temps.sort((a, b) => {
+        if (a.isSystemDefault && !b.isSystemDefault) return -1;
+        if (!a.isSystemDefault && b.isSystemDefault) return 1;
+        return 0;
+      });
+
+      setAvailableTemplates(temps);
+      
+      // Set default template if available
+      const defaultTemplate = temps.find(t => t.isSystemDefault);
+      if (defaultTemplate) {
+        setSelectedTemplateId(defaultTemplate.id);
+        setSelectedTemplateName(defaultTemplate.name);
+      }
+    } catch (error) {
+      console.error('Error loading templates:', error);
     }
   };
 
@@ -262,6 +337,8 @@ export default function ChatSidebar({
         const generateLetter = httpsCallable(functions, 'generateLetter');
         const result = await generateLetter({
           sourceDocumentIds,
+          templateId: selectedTemplateId || undefined,
+          currentLetter: currentLetter || undefined,
         });
 
         const data = result.data as { letter: string };
@@ -472,6 +549,29 @@ export default function ChatSidebar({
       <div className="chat-header">
         <h3>AI Assistant</h3>
         <p className="chat-subtitle">Ask questions or request changes to your letter</p>
+      </div>
+
+      {/* Template Selection Section */}
+      <div className="template-selection-section">
+        <label className="template-label">
+          📋 Template:
+          <select 
+            className="template-selector"
+            value={selectedTemplateId}
+            onChange={(e) => {
+              const templateId = e.target.value;
+              const template = availableTemplates.find(t => t.id === templateId);
+              setSelectedTemplateId(templateId);
+              setSelectedTemplateName(template?.name || 'Default');
+            }}
+          >
+            {availableTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name} {template.isSystemDefault ? '(Default)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {/* Document Management Section */}

@@ -25,6 +25,42 @@
   opacity: 0.9;
 }
 
+.template-selection-section {
+  padding: 12px;
+  border-bottom: 1px solid #e0e0e0;
+  background-color: #f9f9f9;
+}
+
+.template-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.template-selector {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background-color: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.template-selector:hover {
+  border-color: #999;
+}
+
+.template-selector:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
 .chat-messages {
   flex: 1;
   overflow-y: auto;

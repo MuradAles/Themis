@@ -1,0 +1,124 @@
+.template-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.template-preview {
+  height: 200px;
+  overflow: hidden;
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+  position: relative;
+}
+
+.template-preview-content {
+  padding: 16px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #666;
+  pointer-events: none;
+  overflow: hidden;
+  max-height: 200px;
+  position: relative;
+}
+
+.template-preview-content::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent, #fafafa);
+}
+
+.template-preview-empty,
+.template-preview-loading {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.preview-empty-text,
+.preview-loading-text {
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.template-card-header {
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.default-badge {
+  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.template-card-body {
+  padding: 0 16px 16px 16px;
+}
+
+.template-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-date {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.delete-button {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.delete-button:hover {
+  background-color: #fee;
+}
+
+.delete-button:active {
+  background-color: #fcc;
+}
+

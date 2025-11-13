@@ -25,8 +25,10 @@ interface Document {
 }
 
 export default function Editor() {
-  const { documentId } = useParams<{ documentId?: string }>();
+  const { documentId, templateId } = useParams<{ documentId?: string; templateId?: string }>();
   const navigate = useNavigate();
+  const isTemplateMode = window.location.pathname.includes('/templates/editor');
+  const currentId = templateId || documentId;
   const [document, setDocument] = useState<Document | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -45,11 +47,11 @@ export default function Editor() {
 
   useEffect(() => {
     const loadDocument = async () => {
-      if (!documentId) {
-        // New document - create placeholder
+      if (!currentId) {
+        // New document or template - create placeholder
         setDocument({
           id: 'new',
-          title: 'New Document',
+          title: isTemplateMode ? 'New Template' : 'New Document',
           content: null,
           format: 'Standard',
           status: 'draft',
@@ -60,7 +62,8 @@ export default function Editor() {
       }
 
       try {
-        const docRef = doc(db, 'documents', documentId);
+        const collectionName = isTemplateMode ? 'templates' : 'documents';
+        const docRef = doc(db, collectionName, currentId);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
@@ -68,35 +71,45 @@ export default function Editor() {
           setDocument({
             id: docSnap.id,
             ...docData,
+            // Templates use 'name' field, documents use 'title'
+            title: docData.title || docData.name || '',
           } as Document);
           // Load margins if they exist, otherwise use defaults
           if (docData.margins) {
             setMargins(docData.margins);
           }
         } else {
-          setError('Document not found');
+          setError(isTemplateMode ? 'Template not found' : 'Document not found');
         }
         setLoading(false);
       } catch (err) {
-        console.error('Error loading document:', err);
-        setError('Failed to load document. Please try again.');
+        console.error('Error loading:', err);
+        setError(isTemplateMode ? 'Failed to load template. Please try again.' : 'Failed to load document. Please try again.');
         setLoading(false);
       }
     };
 
     loadDocument();
-  }, [documentId]);
+  }, [currentId, isTemplateMode]);
 
   const saveToFirestore = useCallback(async (content: string) => {
     if (!document || !auth.currentUser) return;
 
     try {
       setSaveStatus('saving');
-      const docRef = doc(db, 'documents', document.id);
+      const collectionName = isTemplateMode ? 'templates' : 'documents';
+      const docRef = doc(db, collectionName, document.id);
 
       if (document.id === 'new') {
-        // Create new document
-        const newDoc = {
+        // Create new document or template
+        const newDoc = isTemplateMode ? {
+          name: document.title || 'New Template',
+          content: content,
+          isSystemDefault: false,
+          userId: auth.currentUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        } : {
           title: document.title || '',
           content,
           format: document.format || 'Standard',
@@ -110,16 +123,31 @@ export default function Editor() {
         // Update local document state with new ID
         setDocument({ ...document, id: docRef.id, margins });
       } else {
-        // Update existing document
+        // Update existing document or template
+        if (isTemplateMode) {
         await updateDoc(docRef, {
+            name: document.title,
+            content,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await updateDoc(docRef, {
+            title: document.title,
           content,
           margins,
           updatedAt: serverTimestamp(),
         });
+        }
+      }
+
+      // Update URL if creating new document/template
+      if (document.id === 'new') {
+        navigate(isTemplateMode ? `/templates/editor/${docRef.id}` : `/editor/${docRef.id}`, { replace: true });
+        setDocument({ ...document, id: docRef.id });
       }
 
       // Save to localStorage as backup
-      const backupKey = `document_backup_${document.id}`;
+      const backupKey = `${isTemplateMode ? 'template' : 'document'}_backup_${document.id}`;
       localStorage.setItem(backupKey, JSON.stringify({
         content,
         timestamp: Date.now(),
@@ -128,11 +156,11 @@ export default function Editor() {
       lastSavedContentRef.current = content;
       setSaveStatus('saved');
     } catch (err) {
-      console.error('Error saving document:', err);
+      console.error('Error saving:', err);
       setSaveStatus('unsaved');
       throw err;
     }
-  }, [document]);
+  }, [document, margins, isTemplateMode, navigate]);
 
   // Initialize lastSavedContentRef when document loads
   useEffect(() => {
@@ -230,7 +258,7 @@ export default function Editor() {
   };
 
   const handleBack = () => {
-    navigate('/documents');
+    navigate(isTemplateMode ? '/templates' : '/documents');
   };
 
   const handleSave = async () => {

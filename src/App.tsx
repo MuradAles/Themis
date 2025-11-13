@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import DocumentsList from './pages/DocumentsList';
+import TemplatesList from './pages/TemplatesList';
 import Editor from './pages/Editor';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
@@ -19,7 +20,23 @@ function App() {
           }
         />
         <Route
+          path="/templates"
+          element={
+            <ProtectedRoute>
+              <TemplatesList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/editor/:documentId?"
+          element={
+            <ProtectedRoute>
+              <Editor />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/templates/editor/:templateId?"
           element={
             <ProtectedRoute>
               <Editor />
