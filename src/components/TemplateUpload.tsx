@@ -94,12 +94,16 @@ export default function TemplateUpload({ onClose }: TemplateUploadProps) {
 
       const data = result.data as { templateHTML: string };
 
+      // Get author name from user
+      const authorName = auth.currentUser.displayName || auth.currentUser.email || 'Unknown';
+      
       // Create template document with AI-generated HTML
       const templateRef = await addDoc(collection(db, 'templates'), {
         name: file.name.replace('.pdf', ''),
         content: data.templateHTML,
         isSystemDefault: false,
         userId: userId,
+        authorName: authorName,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });

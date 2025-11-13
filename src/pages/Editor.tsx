@@ -102,12 +102,16 @@ export default function Editor() {
       const docRef = doc(db, collectionName, document.id);
 
       if (document.id === 'new') {
+        // Get author name from user
+        const authorName = auth.currentUser.displayName || auth.currentUser.email || 'Unknown';
+        
         // Create new document or template
         const newDoc = isTemplateMode ? {
           name: document.title || 'New Template',
           content: content,
           isSystemDefault: false,
           userId: auth.currentUser.uid,
+          authorName: authorName,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         } : {
@@ -684,10 +688,12 @@ export default function Editor() {
               setDocument({ ...document!, title: newTitle });
               // Auto-save title
               if (document && document.id !== 'new' && auth.currentUser) {
-                updateDoc(doc(db, 'documents', document.id), {
-                  title: newTitle,
-                  updatedAt: serverTimestamp(),
-                }).catch((err) => {
+                const collectionName = isTemplateMode ? 'templates' : 'documents';
+                const updateData = isTemplateMode 
+                  ? { name: newTitle, updatedAt: serverTimestamp() }
+                  : { title: newTitle, updatedAt: serverTimestamp() };
+                
+                updateDoc(doc(db, collectionName, document.id), updateData).catch((err) => {
                   console.error('Error saving title:', err);
                 });
               }
@@ -696,10 +702,12 @@ export default function Editor() {
               // Save title when user finishes editing
               if (document && document.id !== 'new' && auth.currentUser) {
                 try {
-                  await updateDoc(doc(db, 'documents', document.id), {
-                    title: document.title || '',
-                    updatedAt: serverTimestamp(),
-                  });
+                  const collectionName = isTemplateMode ? 'templates' : 'documents';
+                  const updateData = isTemplateMode
+                    ? { name: document.title || '', updatedAt: serverTimestamp() }
+                    : { title: document.title || '', updatedAt: serverTimestamp() };
+                  
+                  await updateDoc(doc(db, collectionName, document.id), updateData);
                 } catch (err) {
                   console.error('Error saving title:', err);
                 }

@@ -12,6 +12,7 @@ interface Template {
   content: string;
   isSystemDefault: boolean;
   userId: string;
+  authorName?: string;
   createdAt: any; // Firestore Timestamp
   updatedAt: any; // Firestore Timestamp
 }

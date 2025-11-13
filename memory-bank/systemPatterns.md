@@ -165,8 +165,19 @@ Editor.tsx (Page)
 │   └── Chat Toggle Button
 ├── Main Layout (Flex)
 │   ├── TiptapEditor.tsx (flex: 1)
-│   └── ChatSidebar.tsx (400px, conditional)
-│       ├── ChatMessage.tsx (multiple)
+│   └── ChatSidebar.tsx (400px, conditional, smooth slide animation)
+│       ├── Toggle Button (Documents & Template)
+│       ├── Collapsible Controls Section
+│       │   ├── Tabs (Documents/Template)
+│       │   ├── Document Tab
+│       │   │   ├── Compact Indicator (one doc name + count)
+│       │   │   ├── Upload/Select Buttons
+│       │   │   └── Animated Selection List
+│       │   └── Template Tab
+│       │       ├── Compact Indicator (template name)
+│       │       ├── Select Button
+│       │       └── Animated Template List
+│       ├── ChatMessages.tsx (scrollable)
 │       └── ChatInput.tsx
 ```
 

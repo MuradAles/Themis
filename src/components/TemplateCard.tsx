@@ -12,6 +12,7 @@ interface TemplateCardProps {
     content: string;
     isSystemDefault: boolean;
     userId: string;
+    authorName?: string;
     createdAt: any; // Firestore Timestamp
     updatedAt: any; // Firestore Timestamp
   };
@@ -136,6 +137,13 @@ export default function TemplateCard({ template }: TemplateCardProps) {
         <div className="template-card-body">
           <div className="template-meta">
             <span className="template-date">{formattedDate}</span>
+          </div>
+        </div>
+      )}
+      {!template.isSystemDefault && template.authorName && (
+        <div className="template-card-body">
+          <div className="template-meta">
+            <span className="template-author">By {template.authorName}</span>
           </div>
         </div>
       )}
